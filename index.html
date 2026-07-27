@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Golf Game Improvement Tracker</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1b4332">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Golf Tracker">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<style>
+  :root{
+    --green-dark:#1b4332;
+    --green:#2d6a4f;
+    --green-light:#40916c;
+    --cream:#faf7f0;
+    --card:#ffffff;
+    --ink:#1f2a24;
+    --muted:#6b7c72;
+    --line:#dfe6e0;
+    --danger:#b3382c;
+    --gold:#c9992b;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    background:var(--cream);
+    color:var(--ink);
+    padding:24px;
+  }
+  h1{font-size:1.5rem;margin:0 0 4px 0;color:var(--green-dark);}
+  .subtitle{color:var(--muted);margin:0 0 20px 0;font-size:0.95rem;}
+  .layout{display:grid;grid-template-columns:1.6fr 1fr;gap:20px;max-width:1400px;margin:0 auto;}
+  @media (max-width:1000px){.layout{grid-template-columns:1fr;}}
+  .card{
+    background:var(--card);
+    border-radius:14px;
+    padding:20px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.08);
+    border:1px solid var(--line);
+    margin-bottom:20px;
+  }
+  .card h2{
+    font-size:1.05rem;
+    margin:0 0 14px 0;
+    color:var(--green-dark);
+    border-bottom:2px solid var(--green-light);
+    padding-bottom:8px;
+  }
+  .round-meta{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px;}
+  .round-meta label{font-size:0.78rem;color:var(--muted);display:block;margin-bottom:4px;}
+  .round-meta input, select{
+    padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-size:0.9rem;
+    background:#fff;color:var(--ink);
+  }
+  table{width:100%;border-collapse:collapse;font-size:0.82rem;}
+  th{
+    background:var(--green-dark);color:#fff;padding:6px 4px;font-weight:600;
+    text-align:center;position:sticky;top:0;
+  }
+  td{padding:3px 3px;text-align:center;border-bottom:1px solid var(--line);}
+  tbody tr:nth-child(9){border-bottom:2px solid var(--green);}
+  td input, td select{
+    width:100%;padding:4px 2px;border:1px solid var(--line);border-radius:4px;
+    font-size:0.8rem;text-align:center;
+  }
+  .table-scroll{overflow-x:auto;}
+  .hole-col{min-width:34px;}
+  tfoot td{font-weight:700;background:#f1f5f2;}
+  .btn{
+    background:var(--green);color:#fff;border:none;border-radius:8px;
+    padding:10px 18px;font-size:0.9rem;cursor:pointer;font-weight:600;
+  }
+  .btn:hover{background:var(--green-dark);}
+  .btn.secondary{background:#fff;color:var(--green-dark);border:1px solid var(--green);}
+  .btn.secondary:hover{background:#eef4f0;}
+  .btn.danger{background:#fff;color:var(--danger);border:1px solid var(--danger);}
+  .btn-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}
+  .summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+  .stat{
+    background:#f4f8f5;border-radius:10px;padding:10px 12px;text-align:center;
+  }
+  .stat .num{font-size:1.5rem;font-weight:700;color:var(--green-dark);}
+  .stat .lbl{font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;}
+  .impact-row{display:flex;justify-content:space-between;font-size:0.85rem;padding:6px 0;border-bottom:1px dashed var(--line);}
+  .impact-row:last-child{border-bottom:none;}
+  .impact-row .val{font-weight:700;color:var(--green-dark);}
+  .pattern-block{margin-bottom:14px;}
+  .pattern-title{font-weight:700;font-size:0.85rem;margin-bottom:6px;color:var(--green-dark);}
+  .pattern-line{display:flex;justify-content:space-between;font-size:0.82rem;padding:3px 0;color:var(--ink);}
+  .pattern-line span:last-child{font-weight:600;}
+  .opportunity-badge{
+    display:inline-block;background:var(--gold);color:#fff;padding:6px 14px;
+    border-radius:20px;font-weight:700;font-size:0.9rem;margin-top:4px;
+  }
+  .goal-box{
+    background:#fff8ea;border:1px dashed var(--gold);border-radius:10px;padding:12px;
+    font-size:0.88rem;color:var(--ink);
+  }
+  .goal-box strong{color:var(--green-dark);}
+  .history-table{font-size:0.8rem;}
+  .history-table th{font-size:0.72rem;}
+  .empty-note{color:var(--muted);font-size:0.85rem;font-style:italic;}
+  .flex-between{display:flex;justify-content:space-between;align-items:center;}
+  .small-note{font-size:0.72rem;color:var(--muted);margin-top:6px;}
+  .tag{display:inline-block;padding:2px 8px;border-radius:6px;font-size:0.72rem;font-weight:700;}
+  .tag.long{background:#e6f0ea;color:var(--green-dark);}
+  .tag.short{background:#fdeee9;color:var(--danger);}
+  .tag.putting{background:#eef0fd;color:#33409e;}
+  .chart-wrap{position:relative;height:220px;margin-top:8px;}
+  .chart-wrap.small{height:190px;}
+  .trends-layout{display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:1400px;margin:0 auto;}
+  @media (max-width:1000px){.trends-layout{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+
+<h1>⛳ Golf Game Improvement Tracker</h1>
+<p class="subtitle">Log each hole, get an instant round summary and shot-pattern breakdown, and track your improvement round over round.</p>
+
+<div class="layout">
+  <div>
+    <div class="card">
+      <h2>Round Entry</h2>
+      <div class="round-meta">
+        <div>
+          <label>Date</label>
+          <input type="date" id="roundDate">
+        </div>
+        <div>
+          <label>Course</label>
+          <input type="text" id="roundCourse" placeholder="Course name" style="width:180px;">
+        </div>
+        <div>
+          <label>Holes</label>
+          <select id="holeCount">
+            <option value="18" selected>18</option>
+            <option value="9">9</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="table-scroll">
+        <table id="holeTable">
+          <thead>
+            <tr>
+              <th class="hole-col">Hole</th>
+              <th>Par</th>
+              <th>Score</th>
+              <th>Putts</th>
+              <th>Fairway</th>
+              <th>Green (GIR)</th>
+              <th>Shots &lt;50yd</th>
+              <th>Penalties</th>
+            </tr>
+          </thead>
+          <tbody id="holeBody"></tbody>
+          <tfoot>
+            <tr>
+              <td>Total</td>
+              <td id="totPar">-</td>
+              <td id="totScore">-</td>
+              <td id="totPutts">-</td>
+              <td colspan="4"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" id="saveRoundBtn">Save Round to History</button>
+        <button class="btn secondary" id="clearRoundBtn">Clear Entry</button>
+      </div>
+      <p class="small-note">Fairway/Green: Hit, or Miss Left / Right / Short / Long. Fairway is disabled for Par 3 holes.</p>
+    </div>
+
+    <div class="card">
+      <div class="flex-between">
+        <h2 style="border:none;margin:0;">Round History</h2>
+        <div>
+          <button class="btn secondary" id="exportCsvBtn">Export CSV</button>
+          <button class="btn danger" id="clearHistoryBtn">Clear History</button>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table class="history-table" id="historyTable">
+          <thead>
+            <tr>
+              <th>#</th><th>Date</th><th>Course</th><th>Score</th><th>Putts</th>
+              <th>Par+</th><th>Dbl+</th><th>3-Putts</th><th>2+ Shots &lt;50yd</th>
+              <th>Penalties</th><th>Biggest Opportunity</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+      </div>
+      <p class="empty-note" id="historyEmpty">No rounds saved yet. Complete a round on the left and click "Save Round to History".</p>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>Round Summary</h2>
+      <div class="summary-grid">
+        <div class="stat"><div class="num" id="sumScore">-</div><div class="lbl">Score</div></div>
+        <div class="stat"><div class="num" id="sumPutts">-</div><div class="lbl">Putts</div></div>
+        <div class="stat"><div class="num" id="sumParBetter">-</div><div class="lbl">Par or Better</div></div>
+        <div class="stat"><div class="num" id="sumDoubleWorse">-</div><div class="lbl">Double or Worse</div></div>
+      </div>
+
+      <div class="pattern-title">Biggest Score Impacts</div>
+      <div class="impact-row"><span>3+ Putts</span><span class="val" id="impThreePutt">0</span></div>
+      <div class="impact-row"><span>2+ Shots (&lt;50 yds)</span><span class="val" id="impShortGame">0</span></div>
+      <div class="impact-row"><span>Penalty Strokes</span><span class="val" id="impPenalty">0</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Shot Patterns</h2>
+      <div class="pattern-block">
+        <div class="pattern-title">Fairway</div>
+        <div class="pattern-line"><span>Hit</span><span id="fwHit">0</span></div>
+        <div class="pattern-line"><span>Miss</span><span id="fwMiss">0</span></div>
+        <div class="pattern-line"><span>Left</span><span id="fwLeft">0</span></div>
+        <div class="pattern-line"><span>Right</span><span id="fwRight">0</span></div>
+        <div class="pattern-line"><span>Short</span><span id="fwShort">0</span></div>
+        <div class="pattern-line"><span>Long</span><span id="fwLong">0</span></div>
+      </div>
+      <div class="pattern-block">
+        <div class="pattern-title">Green</div>
+        <div class="pattern-line"><span>Hit</span><span id="grHit">0</span></div>
+        <div class="pattern-line"><span>Miss</span><span id="grMiss">0</span></div>
+        <div class="pattern-line"><span>Left</span><span id="grLeft">0</span></div>
+        <div class="pattern-line"><span>Right</span><span id="grRight">0</span></div>
+        <div class="pattern-line"><span>Short</span><span id="grShort">0</span></div>
+        <div class="pattern-line"><span>Long</span><span id="grLong">0</span></div>
+      </div>
+      <div class="chart-wrap small"><canvas id="patternChart"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h2>Biggest Opportunity</h2>
+      <div id="opportunityBadgeWrap"><span class="opportunity-badge" id="opportunityBadge">-</span></div>
+      <p class="small-note" id="opportunityExplain"></p>
+    </div>
+
+    <div class="card">
+      <h2>Next Round Goal</h2>
+      <div class="goal-box" id="goalBox">Log a round to get a suggested focus for next time.</div>
+    </div>
+  </div>
+</div>
+
+<div class="trends-layout">
+  <div class="card">
+    <h2>Score &amp; Putts Trend</h2>
+    <div class="chart-wrap"><canvas id="scoreTrendChart"></canvas></div>
+    <p class="empty-note" id="trendEmpty1">Save at least one round to see your trend.</p>
+  </div>
+  <div class="card">
+    <h2>Round Quality Trend</h2>
+    <div class="chart-wrap"><canvas id="qualityTrendChart"></canvas></div>
+    <p class="empty-note" id="trendEmpty2">Par-or-Better vs Double-or-Worse holes, round over round.</p>
+  </div>
+  <div class="card">
+    <h2>Opportunity Breakdown (All Rounds)</h2>
+    <div class="chart-wrap"><canvas id="opportunityChart"></canvas></div>
+  </div>
+  <div class="card">
+    <h2>Score Impact Trend</h2>
+    <div class="chart-wrap"><canvas id="impactTrendChart"></canvas></div>
+    <p class="small-note">3+ putts, 2+ shots inside 50 yards, and penalty strokes per round — the things most likely to be inflating your score.</p>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+const STORAGE_KEY = "golfTrackerHistoryV1";
+
+function defaultHole(n){
+  return {hole:n, par:4, score:"", putts:"", fairway:"na", green:"na", shortShots:0, penalties:0};
+}
+
+let holes = [];
+let history = [];
+
+let patternChart = null, scoreTrendChart = null, qualityTrendChart = null, opportunityChart = null, impactTrendChart = null;
+const CHART_COLORS = {
+  green:"#2d6a4f", greenDark:"#1b4332", greenLight:"#74c69d",
+  red:"#b3382c", redLight:"#e7998f", gold:"#c9992b", blue:"#33409e", grid:"#e6ece8"
+};
+
+function destroyChart(c){ if(c){ c.destroy(); } return null; }
+
+function loadHistory(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    history = raw ? JSON.parse(raw) : [];
+  }catch(e){ history = []; }
+}
+function saveHistory(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+}
+
+function buildHoles(count){
+  holes = [];
+  for(let i=1;i<=count;i++) holes.push(defaultHole(i));
+}
+
+function renderHoleTable(){
+  const body = document.getElementById("holeBody");
+  body.innerHTML = "";
+  holes.forEach((h, idx)=>{
+    const tr = document.createElement("tr");
+    const isPar3 = Number(h.par) === 3;
+    tr.innerHTML = `
+      <td>${h.hole}</td>
+      <td><input type="number" min="3" max="6" value="${h.par}" data-idx="${idx}" data-field="par" style="width:44px;"></td>
+      <td><input type="number" min="1" max="15" value="${h.score}" data-idx="${idx}" data-field="score" style="width:44px;"></td>
+      <td><input type="number" min="0" max="6" value="${h.putts}" data-idx="${idx}" data-field="putts" style="width:44px;"></td>
+      <td>
+        <select data-idx="${idx}" data-field="fairway" ${isPar3 ? "disabled" : ""}>
+          <option value="na" ${h.fairway==="na"?"selected":""}>N/A</option>
+          <option value="hit" ${h.fairway==="hit"?"selected":""}>Hit</option>
+          <option value="left" ${h.fairway==="left"?"selected":""}>Miss L</option>
+          <option value="right" ${h.fairway==="right"?"selected":""}>Miss R</option>
+          <option value="short" ${h.fairway==="short"?"selected":""}>Miss Short</option>
+          <option value="long" ${h.fairway==="long"?"selected":""}>Miss Long</option>
+        </select>
+      </td>
+      <td>
+        <select data-idx="${idx}" data-field="green">
+          <option value="na" ${h.green==="na"?"selected":""}>-</option>
+          <option value="hit" ${h.green==="hit"?"selected":""}>Hit</option>
+          <option value="left" ${h.green==="left"?"selected":""}>Miss L</option>
+          <option value="right" ${h.green==="right"?"selected":""}>Miss R</option>
+          <option value="short" ${h.green==="short"?"selected":""}>Miss Short</option>
+          <option value="long" ${h.green==="long"?"selected":""}>Miss Long</option>
+        </select>
+      </td>
+      <td><input type="number" min="0" max="5" value="${h.shortShots}" data-idx="${idx}" data-field="shortShots" style="width:44px;"></td>
+      <td><input type="number" min="0" max="5" value="${h.penalties}" data-idx="${idx}" data-field="penalties" style="width:44px;"></td>
+    `;
+    body.appendChild(tr);
+  });
+
+  body.querySelectorAll("input, select").forEach(el=>{
+    el.addEventListener("input", onHoleFieldChange);
+    el.addEventListener("change", onHoleFieldChange);
+  });
+
+  updateTotalsAndSummary();
+}
+
+function onHoleFieldChange(e){
+  const idx = Number(e.target.dataset.idx);
+  const field = e.target.dataset.field;
+  let val = e.target.value;
+  if(["par","score","putts","shortShots","penalties"].includes(field)){
+    val = val === "" ? "" : Number(val);
+  }
+  holes[idx][field] = val;
+  if(field === "par"){
+    renderHoleTable(); // re-render to enable/disable fairway select for par 3
+    return;
+  }
+  updateTotalsAndSummary();
+}
+
+function num(v){ return (v === "" || v === null || v === undefined || isNaN(v)) ? 0 : Number(v); }
+
+function computeStats(holeArr){
+  let totPar=0, totScore=0, totPutts=0, parBetter=0, doubleWorse=0, threePutts=0, shortGame2plus=0, penalties=0;
+  let fwHit=0, fwMiss=0, fwLeft=0, fwRight=0, fwShort=0, fwLong=0;
+  let grHit=0, grMiss=0, grLeft=0, grRight=0, grShort=0, grLong=0;
+
+  holeArr.forEach(h=>{
+    const par = num(h.par), score = num(h.score), putts = num(h.putts);
+    totPar += par;
+    if(h.score !== "") totScore += score;
+    if(h.putts !== "") totPutts += putts;
+
+    if(h.score !== ""){
+      if(score <= par) parBetter++;
+      if(score >= par + 2) doubleWorse++;
+    }
+    if(h.putts !== "" && putts >= 3) threePutts++;
+    if(num(h.shortShots) >= 2) shortGame2plus++;
+    penalties += num(h.penalties);
+
+    if(h.fairway === "hit") fwHit++;
+    else if(h.fairway !== "na" && h.fairway !== ""){
+      fwMiss++;
+      if(h.fairway==="left") fwLeft++;
+      if(h.fairway==="right") fwRight++;
+      if(h.fairway==="short") fwShort++;
+      if(h.fairway==="long") fwLong++;
+    }
+
+    if(h.green === "hit") grHit++;
+    else if(h.green !== "na" && h.green !== ""){
+      grMiss++;
+      if(h.green==="left") grLeft++;
+      if(h.green==="right") grRight++;
+      if(h.green==="short") grShort++;
+      if(h.green==="long") grLong++;
+    }
+  });
+
+  const puttingScore = threePutts;
+  const shortGameScore = shortGame2plus;
+  const longGameScore = fwMiss + grMiss;
+
+  let opportunity = "Long Game";
+  if(shortGameScore > longGameScore && shortGameScore >= puttingScore) opportunity = "Short Game";
+  if(puttingScore > longGameScore && puttingScore > shortGameScore) opportunity = "Putting";
+
+  return {
+    totPar, totScore, totPutts, parBetter, doubleWorse, threePutts, shortGame2plus, penalties,
+    fwHit, fwMiss, fwLeft, fwRight, fwShort, fwLong,
+    grHit, grMiss, grLeft, grRight, grShort, grLong,
+    opportunity
+  };
+}
+
+function suggestGoal(stats){
+  const goals = [];
+  if(stats.penalties > 0) goals.push("No penalty strokes");
+  if(stats.threePutts > 0) goals.push("No 3-putts");
+  if(stats.opportunity === "Short Game" && stats.shortGame2plus > 0) goals.push("Get up-and-down from inside 50 yards");
+  if(stats.opportunity === "Long Game" && (stats.fwMiss + stats.grMiss) > 0) goals.push("Hit one more fairway or green than last round");
+  if(goals.length === 0) goals.push("Keep doing what's working — hold your score steady");
+  return goals.slice(0,2);
+}
+
+function updateTotalsAndSummary(){
+  document.getElementById("totPar").textContent = holes.reduce((s,h)=>s+num(h.par),0);
+  const scoredHoles = holes.filter(h=>h.score !== "");
+  document.getElementById("totScore").textContent = scoredHoles.length ? scoredHoles.reduce((s,h)=>s+num(h.score),0) : "-";
+  const puttedHoles = holes.filter(h=>h.putts !== "");
+  document.getElementById("totPutts").textContent = puttedHoles.length ? puttedHoles.reduce((s,h)=>s+num(h.putts),0) : "-";
+
+  const stats = computeStats(holes);
+
+  document.getElementById("sumScore").textContent = scoredHoles.length ? stats.totScore : "-";
+  document.getElementById("sumPutts").textContent = puttedHoles.length ? stats.totPutts : "-";
+  document.getElementById("sumParBetter").textContent = stats.parBetter;
+  document.getElementById("sumDoubleWorse").textContent = stats.doubleWorse;
+
+  document.getElementById("impThreePutt").textContent = stats.threePutts;
+  document.getElementById("impShortGame").textContent = stats.shortGame2plus;
+  document.getElementById("impPenalty").textContent = stats.penalties;
+
+  document.getElementById("fwHit").textContent = stats.fwHit;
+  document.getElementById("fwMiss").textContent = stats.fwMiss;
+  document.getElementById("fwLeft").textContent = stats.fwLeft;
+  document.getElementById("fwRight").textContent = stats.fwRight;
+  document.getElementById("fwShort").textContent = stats.fwShort;
+  document.getElementById("fwLong").textContent = stats.fwLong;
+
+  document.getElementById("grHit").textContent = stats.grHit;
+  document.getElementById("grMiss").textContent = stats.grMiss;
+  document.getElementById("grLeft").textContent = stats.grLeft;
+  document.getElementById("grRight").textContent = stats.grRight;
+  document.getElementById("grShort").textContent = stats.grShort;
+  document.getElementById("grLong").textContent = stats.grLong;
+
+  const badge = document.getElementById("opportunityBadge");
+  badge.textContent = stats.opportunity;
+  const explain = document.getElementById("opportunityExplain");
+  explain.textContent = `Based on ${stats.threePutts} three-putt(s), ${stats.shortGame2plus} short-game miss(es), and ${stats.fwMiss + stats.grMiss} fairway/green miss(es) this round.`;
+
+  const goals = suggestGoal(stats);
+  document.getElementById("goalBox").innerHTML = goals.map(g=>`<strong>•</strong> ${g}`).join("<br>");
+
+  renderPatternChart(stats);
+
+  return stats;
+}
+
+function renderPatternChart(stats){
+  const ctx = document.getElementById("patternChart");
+  if(!ctx) return;
+  patternChart = destroyChart(patternChart);
+  patternChart = new Chart(ctx, {
+    type:"bar",
+    data:{
+      labels:["Fairway Hit","Fairway Miss","Green Hit","Green Miss"],
+      datasets:[{
+        data:[stats.fwHit, stats.fwMiss, stats.grHit, stats.grMiss],
+        backgroundColor:[CHART_COLORS.green, CHART_COLORS.red, CHART_COLORS.green, CHART_COLORS.red],
+        borderRadius:6
+      }]
+    },
+    options:{
+      indexAxis:"y",
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{legend:{display:false}, title:{display:true, text:"This Round", font:{size:11}}},
+      scales:{
+        x:{beginAtZero:true, ticks:{precision:0}, grid:{color:CHART_COLORS.grid}},
+        y:{grid:{display:false}}
+      }
+    }
+  });
+}
+
+function renderTrendCharts(){
+  const labels = history.map((r,i)=> r.date ? r.date.slice(5) : `R${i+1}`);
+  const hasData = history.length > 0;
+
+  document.getElementById("trendEmpty1").style.display = hasData ? "none" : "block";
+  document.getElementById("trendEmpty2").style.display = hasData ? "none" : "block";
+
+  // Score & Putts trend (dual axis line chart)
+  scoreTrendChart = destroyChart(scoreTrendChart);
+  scoreTrendChart = new Chart(document.getElementById("scoreTrendChart"), {
+    type:"line",
+    data:{
+      labels,
+      datasets:[
+        {
+          label:"Score", data: history.map(r=>r.stats.totScore),
+          borderColor: CHART_COLORS.green, backgroundColor: CHART_COLORS.green,
+          yAxisID:"y", tension:0.25, pointRadius:4
+        },
+        {
+          label:"Putts", data: history.map(r=>r.stats.totPutts),
+          borderColor: CHART_COLORS.blue, backgroundColor: CHART_COLORS.blue,
+          yAxisID:"y1", tension:0.25, pointRadius:4
+        }
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:"bottom"}},
+      scales:{
+        y:{position:"left", title:{display:true,text:"Score"}, grid:{color:CHART_COLORS.grid}},
+        y1:{position:"right", title:{display:true,text:"Putts"}, grid:{display:false}}
+      }
+    }
+  });
+
+  // Round quality trend (par-or-better vs double-or-worse)
+  qualityTrendChart = destroyChart(qualityTrendChart);
+  qualityTrendChart = new Chart(document.getElementById("qualityTrendChart"), {
+    type:"bar",
+    data:{
+      labels,
+      datasets:[
+        {label:"Par or Better", data: history.map(r=>r.stats.parBetter), backgroundColor: CHART_COLORS.greenLight, borderRadius:5},
+        {label:"Double or Worse", data: history.map(r=>r.stats.doubleWorse), backgroundColor: CHART_COLORS.redLight, borderRadius:5}
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:"bottom"}},
+      scales:{
+        x:{grid:{display:false}},
+        y:{beginAtZero:true, ticks:{precision:0}, grid:{color:CHART_COLORS.grid}, title:{display:true,text:"Holes"}}
+      }
+    }
+  });
+
+  // Opportunity breakdown across all saved rounds
+  const oppCounts = {Putting:0, "Short Game":0, "Long Game":0};
+  history.forEach(r=>{ oppCounts[r.stats.opportunity] = (oppCounts[r.stats.opportunity]||0) + 1; });
+  opportunityChart = destroyChart(opportunityChart);
+  opportunityChart = new Chart(document.getElementById("opportunityChart"), {
+    type:"doughnut",
+    data:{
+      labels:Object.keys(oppCounts),
+      datasets:[{
+        data:Object.values(oppCounts),
+        backgroundColor:[CHART_COLORS.blue, CHART_COLORS.red, CHART_COLORS.green]
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:"bottom"}}
+    }
+  });
+
+  // Score impact trend
+  impactTrendChart = destroyChart(impactTrendChart);
+  impactTrendChart = new Chart(document.getElementById("impactTrendChart"), {
+    type:"line",
+    data:{
+      labels,
+      datasets:[
+        {label:"3+ Putts", data: history.map(r=>r.stats.threePutts), borderColor: CHART_COLORS.blue, backgroundColor: CHART_COLORS.blue, tension:0.25},
+        {label:"2+ Shots <50yd", data: history.map(r=>r.stats.shortGame2plus), borderColor: CHART_COLORS.gold, backgroundColor: CHART_COLORS.gold, tension:0.25},
+        {label:"Penalty Strokes", data: history.map(r=>r.stats.penalties), borderColor: CHART_COLORS.red, backgroundColor: CHART_COLORS.red, tension:0.25}
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:"bottom"}},
+      scales:{
+        y:{beginAtZero:true, ticks:{precision:0}, grid:{color:CHART_COLORS.grid}},
+        x:{grid:{display:false}}
+      }
+    }
+  });
+}
+
+function renderHistory(){
+  const body = document.getElementById("historyBody");
+  const emptyNote = document.getElementById("historyEmpty");
+  body.innerHTML = "";
+  if(history.length === 0){
+    emptyNote.style.display = "block";
+    renderTrendCharts();
+    return;
+  }
+  emptyNote.style.display = "none";
+
+  history.slice().reverse().forEach((r, revIdx)=>{
+    const realIdx = history.length - 1 - revIdx;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${realIdx+1}</td>
+      <td>${r.date || "-"}</td>
+      <td>${r.course || "-"}</td>
+      <td>${r.stats.totScore}</td>
+      <td>${r.stats.totPutts}</td>
+      <td>${r.stats.parBetter}</td>
+      <td>${r.stats.doubleWorse}</td>
+      <td>${r.stats.threePutts}</td>
+      <td>${r.stats.shortGame2plus}</td>
+      <td>${r.stats.penalties}</td>
+      <td><span class="tag ${r.stats.opportunity==='Putting'?'putting':(r.stats.opportunity==='Short Game'?'short':'long')}">${r.stats.opportunity}</span></td>
+      <td><button class="btn danger" style="padding:4px 8px;font-size:0.72rem;" data-del="${realIdx}">Delete</button></td>
+    `;
+    body.appendChild(tr);
+  });
+
+  body.querySelectorAll("[data-del]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const i = Number(btn.dataset.del);
+      history.splice(i,1);
+      saveHistory();
+      renderHistory();
+    });
+  });
+
+  renderTrendCharts();
+}
+
+function exportCsv(){
+  if(history.length === 0){ alert("No rounds to export yet."); return; }
+  const headers = ["Round","Date","Course","Score","Putts","ParOrBetter","DoubleOrWorse","ThreePutts","TwoPlusShotsUnder50","PenaltyStrokes","BiggestOpportunity"];
+  const rows = history.map((r,i)=>[
+    i+1, r.date||"", r.course||"", r.stats.totScore, r.stats.totPutts, r.stats.parBetter,
+    r.stats.doubleWorse, r.stats.threePutts, r.stats.shortGame2plus, r.stats.penalties, r.stats.opportunity
+  ]);
+  const csv = [headers, ...rows].map(row=>row.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], {type:"text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `golf-round-history-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById("holeCount").addEventListener("change", (e)=>{
+  buildHoles(Number(e.target.value));
+  renderHoleTable();
+});
+
+document.getElementById("saveRoundBtn").addEventListener("click", ()=>{
+  const scoredHoles = holes.filter(h=>h.score !== "");
+  if(scoredHoles.length === 0){
+    alert("Enter at least one hole score before saving.");
+    return;
+  }
+  const stats = updateTotalsAndSummary();
+  history.push({
+    date: document.getElementById("roundDate").value || new Date().toISOString().slice(0,10),
+    course: document.getElementById("roundCourse").value || "",
+    holes: JSON.parse(JSON.stringify(holes)),
+    stats
+  });
+  saveHistory();
+  renderHistory();
+  alert("Round saved to history.");
+});
+
+document.getElementById("clearRoundBtn").addEventListener("click", ()=>{
+  if(!confirm("Clear the current round entry? This does not affect saved history.")) return;
+  buildHoles(Number(document.getElementById("holeCount").value));
+  renderHoleTable();
+  document.getElementById("roundCourse").value = "";
+});
+
+document.getElementById("clearHistoryBtn").addEventListener("click", ()=>{
+  if(!confirm("Delete ALL saved round history? This cannot be undone.")) return;
+  history = [];
+  saveHistory();
+  renderHistory();
+});
+
+document.getElementById("exportCsvBtn").addEventListener("click", exportCsv);
+
+// init
+loadHistory();
+buildHoles(18);
+renderHoleTable();
+renderHistory();
+document.getElementById("roundDate").value = new Date().toISOString().slice(0,10);
+
+if("serviceWorker" in navigator){
+  window.addEventListener("load", ()=>{
+    navigator.serviceWorker.register("service-worker.js").catch(err=>console.warn("SW registration failed:", err));
+  });
+}
+</script>
+</body>
+</html>
