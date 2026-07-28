@@ -136,6 +136,21 @@
   .chart-wrap.small{height:190px;}
   .trends-layout{display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:1400px;margin:0 auto;}
   @media (max-width:1000px){.trends-layout{grid-template-columns:1fr;}}
+  .disclaimer-bar{
+    max-width:1400px;margin:0 auto 16px auto;padding:10px 16px;
+    background:#fff8ea;border:1px solid var(--gold);border-radius:10px;
+    font-size:0.78rem;color:var(--ink);
+  }
+  .profile-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px;margin-bottom:16px;padding-bottom:16px;border-bottom:1px dashed var(--line);}
+  .profile-row label{font-size:0.78rem;color:var(--muted);display:block;margin-bottom:4px;}
+  .profile-row select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-size:0.9rem;background:#fff;color:var(--ink);}
+  .profile-fields{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:8px;}
+  .profile-fields label{font-size:0.78rem;color:var(--muted);display:block;margin-bottom:4px;}
+  .profile-fields input, .profile-fields select{
+    padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-size:0.9rem;
+    background:#fff;color:var(--ink);
+  }
+  .profile-fields input[readonly]{background:#f1f5f2;color:var(--muted);}
 </style>
 </head>
 <body>
@@ -143,11 +158,25 @@
 <h1>⛳ Golf Game Improvement Tracker</h1>
 <p class="subtitle">Log each hole, get an instant round summary and shot-pattern breakdown, and track your improvement round over round.</p>
 
+<div class="disclaimer-bar">
+  ⚠️ <strong>Beta software — use at your own risk.</strong> This app is provided for informal, recreational use only, with no warranty as to the accuracy of scoring, handicap, or Stableford calculations.
+</div>
+
 <div class="layout">
   <div>
     <div class="card">
-      <h2>Round Entry</h2>
-      <div class="player-meta">
+      <h2>Player Profile</h2>
+      <div class="profile-row">
+        <div>
+          <label>Profile</label>
+          <select id="profileSelect" style="width:200px;">
+            <option value="">+ New Profile</option>
+          </select>
+        </div>
+        <button class="btn secondary" id="saveProfileBtn" type="button">Save Profile</button>
+        <button class="btn danger" id="deleteProfileBtn" type="button">Delete Profile</button>
+      </div>
+      <div class="profile-fields">
         <div>
           <label>Player Name</label>
           <input type="text" id="playerName" placeholder="Player name" style="width:180px;">
@@ -159,6 +188,32 @@
             <option value="Women">Women</option>
           </select>
         </div>
+        <div>
+          <label>Email Address</label>
+          <input type="email" id="playerEmail" placeholder="name@example.com" style="width:200px;">
+        </div>
+        <div>
+          <label>Mobile Cellular Number</label>
+          <input type="tel" id="playerMobile" placeholder="e.g. 082 123 4567" style="width:170px;">
+        </div>
+        <div>
+          <label>Date of Birth</label>
+          <input type="date" id="playerDOB" style="width:160px;">
+        </div>
+        <div>
+          <label>Age</label>
+          <input type="text" id="playerAge" readonly style="width:60px;">
+        </div>
+        <div>
+          <label>Handicap Registration No.</label>
+          <input type="text" id="handicapRegNo" placeholder="e.g. 1234567" style="width:140px;">
+        </div>
+        <div>
+          <label>Affiliated Golf Club</label>
+          <input type="text" id="affiliatedClub" placeholder="Club name" style="width:200px;">
+        </div>
+      </div>
+      <div class="profile-fields" style="margin-bottom:0;">
         <div>
           <label>Tee Marker</label>
           <select id="teeMarker">
@@ -177,6 +232,11 @@
           <input type="number" id="playerHC" step="1" min="0" placeholder="e.g. 16" style="width:100px;">
         </div>
       </div>
+      <p class="small-note">Profiles are stored on this device only. Pick your name from the dropdown each time you play (a simple "login"), or create a new profile the first time. Real OTP-verified accounts are a planned future upgrade.</p>
+    </div>
+
+    <div class="card">
+      <h2>Round Entry</h2>
       <div class="round-meta">
         <div>
           <label>Date</label>
@@ -365,6 +425,72 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script>
 const STORAGE_KEY = "golfTrackerHistoryV1";
+const PROFILES_KEY = "golfTrackerProfilesV1";
+
+let profiles = [];
+
+function loadProfiles(){
+  try{
+    const raw = localStorage.getItem(PROFILES_KEY);
+    profiles = raw ? JSON.parse(raw) : [];
+  }catch(e){ profiles = []; }
+}
+function saveProfiles(){
+  localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles));
+}
+
+function calculateAge(dobStr){
+  if(!dobStr) return "";
+  const dob = new Date(dobStr);
+  if(isNaN(dob.getTime())) return "";
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const hasHadBirthdayThisYear = (today.getMonth() > dob.getMonth()) ||
+    (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate());
+  if(!hasHadBirthdayThisYear) age--;
+  return age >= 0 ? age : "";
+}
+
+function readProfileForm(){
+  return {
+    name: document.getElementById("playerName").value.trim(),
+    gender: document.getElementById("playerGender").value,
+    email: document.getElementById("playerEmail").value.trim(),
+    mobile: document.getElementById("playerMobile").value.trim(),
+    dob: document.getElementById("playerDOB").value,
+    handicapRegNo: document.getElementById("handicapRegNo").value.trim(),
+    affiliatedClub: document.getElementById("affiliatedClub").value.trim(),
+    tee: document.getElementById("teeMarker").value,
+    hi: document.getElementById("playerHI").value,
+    hc: document.getElementById("playerHC").value
+  };
+}
+
+function fillProfileForm(p){
+  document.getElementById("playerName").value = p.name || "";
+  document.getElementById("playerGender").value = p.gender || "Men";
+  document.getElementById("playerEmail").value = p.email || "";
+  document.getElementById("playerMobile").value = p.mobile || "";
+  document.getElementById("playerDOB").value = p.dob || "";
+  document.getElementById("playerAge").value = calculateAge(p.dob);
+  document.getElementById("handicapRegNo").value = p.handicapRegNo || "";
+  document.getElementById("affiliatedClub").value = p.affiliatedClub || "";
+  document.getElementById("teeMarker").value = p.tee || "Yellow";
+  document.getElementById("playerHI").value = p.hi || "";
+  document.getElementById("playerHC").value = p.hc || "";
+}
+
+function clearProfileForm(){
+  fillProfileForm({});
+}
+
+function populateProfileSelect(selectName){
+  const select = document.getElementById("profileSelect");
+  const current = selectName !== undefined ? selectName : select.value;
+  select.innerHTML = '<option value="">+ New Profile</option>' +
+    profiles.map(p => `<option value="${p.name.replace(/"/g,"&quot;")}">${p.name}</option>`).join("");
+  select.value = profiles.some(p=>p.name === current) ? current : "";
+}
 
 // SA Top 100 Courses 2026 ranking (satop100courses.com) — used for the Course field's autocomplete suggestions.
 // Free-text entry is still allowed; this list only powers the suggestion dropdown.
@@ -972,6 +1098,40 @@ document.getElementById("holeCount").addEventListener("change", (e)=>{
 document.getElementById("playerHC").addEventListener("input", updateTotalsAndSummary);
 document.getElementById("playerHC").addEventListener("change", updateTotalsAndSummary);
 
+document.getElementById("playerDOB").addEventListener("change", (e)=>{
+  document.getElementById("playerAge").value = calculateAge(e.target.value);
+});
+
+document.getElementById("profileSelect").addEventListener("change", (e)=>{
+  const name = e.target.value;
+  if(!name){ clearProfileForm(); return; }
+  const p = profiles.find(pr => pr.name === name);
+  if(p) fillProfileForm(p);
+});
+
+document.getElementById("saveProfileBtn").addEventListener("click", ()=>{
+  const data = readProfileForm();
+  if(!data.name){
+    alert("Enter a player name before saving a profile.");
+    return;
+  }
+  const idx = profiles.findIndex(p => p.name === data.name);
+  if(idx >= 0) profiles[idx] = data; else profiles.push(data);
+  saveProfiles();
+  populateProfileSelect(data.name);
+  alert(`Profile saved for ${data.name}.`);
+});
+
+document.getElementById("deleteProfileBtn").addEventListener("click", ()=>{
+  const name = document.getElementById("profileSelect").value;
+  if(!name){ alert("Select a saved profile to delete first."); return; }
+  if(!confirm(`Delete the saved profile for ${name}? This does not affect any rounds already in History.`)) return;
+  profiles = profiles.filter(p => p.name !== name);
+  saveProfiles();
+  populateProfileSelect("");
+  clearProfileForm();
+});
+
 document.getElementById("saveRoundBtn").addEventListener("click", ()=>{
   const scoredHoles = holes.filter(h=>h.score !== "");
   if(scoredHoles.length === 0){
@@ -984,6 +1144,12 @@ document.getElementById("saveRoundBtn").addEventListener("click", ()=>{
     course: document.getElementById("roundCourse").value || "",
     playerName: document.getElementById("playerName").value || "",
     gender: document.getElementById("playerGender").value || "",
+    email: document.getElementById("playerEmail").value || "",
+    mobile: document.getElementById("playerMobile").value || "",
+    dob: document.getElementById("playerDOB").value || "",
+    age: document.getElementById("playerAge").value || "",
+    handicapRegNo: document.getElementById("handicapRegNo").value || "",
+    affiliatedClub: document.getElementById("affiliatedClub").value || "",
     tee: document.getElementById("teeMarker").value || "",
     hi: document.getElementById("playerHI").value || "",
     hc: document.getElementById("playerHC").value || "",
@@ -1013,6 +1179,8 @@ document.getElementById("exportCsvBtn").addEventListener("click", exportCsv);
 
 // init
 loadHistory();
+loadProfiles();
+populateProfileSelect("");
 buildHoles(18);
 renderHoleTable();
 renderHistory();
