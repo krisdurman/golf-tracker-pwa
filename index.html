@@ -178,10 +178,6 @@
       </div>
       <div class="profile-fields">
         <div>
-          <label>Player Name</label>
-          <input type="text" id="playerName" placeholder="Player name" style="width:180px;">
-        </div>
-        <div>
           <label>Gender</label>
           <select id="playerGender">
             <option value="Men">Men</option>
@@ -231,8 +227,12 @@
           <label>HC (Course Handicap)</label>
           <input type="number" id="playerHC" step="1" min="0" placeholder="e.g. 16" style="width:100px;">
         </div>
+        <div>
+          <label>Player Name (enter last, then Save)</label>
+          <input type="text" id="playerName" placeholder="Player name" style="width:180px;">
+        </div>
       </div>
-      <p class="small-note">Profiles are stored on this device only. Pick your name from the dropdown each time you play (a simple "login"), or create a new profile the first time. Real OTP-verified accounts are a planned future upgrade.</p>
+      <p class="small-note">Profiles are stored on this device only. Capture your details above, then type your name and tap "Save Profile" to create your profile. Next time, just pick your name from the dropdown (a simple "login"). Real OTP-verified accounts are a planned future upgrade.</p>
     </div>
 
     <div class="card">
@@ -278,11 +278,11 @@
             <tr id="frontRow" class="subtotal-row">
               <td>Front 9</td>
               <td></td>
-              <td></td>
-              <td></td>
+              <td id="frontPar">-</td>
+              <td id="frontScore">-</td>
               <td id="frontNett">-</td>
               <td id="frontSP">-</td>
-              <td></td>
+              <td id="frontPutts">-</td>
               <td></td>
               <td></td>
               <td></td>
@@ -291,11 +291,11 @@
             <tr id="backRow" class="subtotal-row">
               <td>Back 9</td>
               <td></td>
-              <td></td>
-              <td></td>
+              <td id="backPar">-</td>
+              <td id="backScore">-</td>
               <td id="backNett">-</td>
               <td id="backSP">-</td>
-              <td></td>
+              <td id="backPutts">-</td>
               <td></td>
               <td></td>
               <td></td>
@@ -765,12 +765,17 @@ function computeStats(holeArr, hc){
   let fwHit=0, fwMiss=0, fwLeft=0, fwRight=0, fwShort=0, fwLong=0;
   let grHit=0, grMiss=0, grLeft=0, grRight=0, grShort=0, grLong=0;
   let totNett=0, totSP=0, frontNett=0, frontSP=0, backNett=0, backSP=0;
+  let frontPar=0, backPar=0, frontScore=0, backScore=0, frontPutts=0, backPutts=0;
 
   holeArr.forEach((h, idx)=>{
     const par = num(h.par), score = num(h.score), putts = num(h.putts);
     totPar += par;
     if(h.score !== "") totScore += score;
     if(h.putts !== "") totPutts += putts;
+
+    if(idx < 9){ frontPar += par; } else { backPar += par; }
+    if(h.score !== ""){ if(idx < 9){ frontScore += score; } else { backScore += score; } }
+    if(h.putts !== ""){ if(idx < 9){ frontPutts += putts; } else { backPutts += putts; } }
 
     if(h.score !== ""){
       const {nett, sp} = holeNettSP(h, hc);
@@ -820,6 +825,7 @@ function computeStats(holeArr, hc){
     fwHit, fwMiss, fwLeft, fwRight, fwShort, fwLong,
     grHit, grMiss, grLeft, grRight, grShort, grLong,
     totNett, totSP, frontNett, frontSP, backNett, backSP,
+    frontPar, backPar, frontScore, backScore, frontPutts, backPutts,
     opportunity
   };
 }
@@ -853,15 +859,23 @@ function updateTotalsAndSummary(){
     if(spCell) spCell.textContent = sp === "" ? "-" : sp;
   });
 
-  // Front9/Back9/Grand Total subtotal rows (Nett & SP only)
+  // Front9/Back9/Grand Total subtotal rows (Par, Score, Nett, SP, Putts)
   const hasBack = holes.length > 9;
   const backRow = document.getElementById("backRow");
   if(backRow) backRow.style.display = hasBack ? "" : "none";
+
+  document.getElementById("frontPar").textContent = stats.frontPar;
+  document.getElementById("frontScore").textContent = scoredHoles.length ? stats.frontScore : "-";
   document.getElementById("frontNett").textContent = scoredHoles.length ? stats.frontNett : "-";
   document.getElementById("frontSP").textContent = scoredHoles.length ? stats.frontSP : "-";
+  document.getElementById("frontPutts").textContent = puttedHoles.length ? stats.frontPutts : "-";
+
   if(hasBack){
+    document.getElementById("backPar").textContent = stats.backPar;
+    document.getElementById("backScore").textContent = scoredHoles.length ? stats.backScore : "-";
     document.getElementById("backNett").textContent = scoredHoles.length ? stats.backNett : "-";
     document.getElementById("backSP").textContent = scoredHoles.length ? stats.backSP : "-";
+    document.getElementById("backPutts").textContent = puttedHoles.length ? stats.backPutts : "-";
   }
   document.getElementById("totNett").textContent = scoredHoles.length ? stats.totNett : "-";
   document.getElementById("totSP").textContent = scoredHoles.length ? stats.totSP : "-";
