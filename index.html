@@ -900,6 +900,7 @@ function num(v){ return (v === "" || v === null || v === undefined || isNaN(v)) 
 function computeStats(holeArr, hc){
   hc = num(hc);
   let totPar=0, totScore=0, totPutts=0, parBetter=0, doubleWorse=0, threePutts=0, shortGame2plus=0;
+  let subPar=0, parCount=0, overPar=0;
   let fwHit=0, fwMiss=0, fwLeft=0, fwRight=0, fwShort=0, fwLong=0;
   let grHit=0, grMiss=0, grLeft=0, grRight=0, grShort=0, grLong=0;
   let totNett=0, totSP=0, frontNett=0, frontSP=0, backNett=0, backSP=0;
@@ -933,6 +934,9 @@ function computeStats(holeArr, hc){
     if(h.score !== ""){
       if(score <= par) parBetter++;
       if(score >= par + 2) doubleWorse++;
+      if(score < par) subPar++;
+      else if(score === par) parCount++;
+      else overPar++;
     }
     if(h.putts !== "" && putts >= 3) threePutts++;
     if(num(h.shortShots) >= 2) shortGame2plus++;
@@ -966,6 +970,7 @@ function computeStats(holeArr, hc){
 
   return {
     totPar, totScore, totPutts, parBetter, doubleWorse, threePutts, shortGame2plus,
+    subPar, parCount, overPar,
     penalties: totPenalties,
     fwHit, fwMiss, fwLeft, fwRight, fwShort, fwLong,
     grHit, grMiss, grLeft, grRight, grShort, grLong,
@@ -1137,15 +1142,16 @@ function renderTrendCharts(){
     }
   });
 
-  // Round quality trend (par-or-better vs double-or-worse)
+  // Round quality trend (sub-par vs par vs over-par holes, per round)
   qualityTrendChart = destroyChart(qualityTrendChart);
   qualityTrendChart = new Chart(document.getElementById("qualityTrendChart"), {
     type:"bar",
     data:{
       labels,
       datasets:[
-        {label:"Par or Better", data: history.map(r=>r.stats.parBetter), backgroundColor: CHART_COLORS.greenLight, borderRadius:5},
-        {label:"Double or Worse", data: history.map(r=>r.stats.doubleWorse), backgroundColor: CHART_COLORS.redLight, borderRadius:5}
+        {label:"Sub-Par", data: history.map(r=>r.stats.subPar), backgroundColor: CHART_COLORS.greenLight, borderRadius:5},
+        {label:"Par", data: history.map(r=>r.stats.parCount), backgroundColor: CHART_COLORS.gold, borderRadius:5},
+        {label:"Over-Par", data: history.map(r=>r.stats.overPar), backgroundColor: CHART_COLORS.redLight, borderRadius:5}
       ]
     },
     options:{
