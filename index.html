@@ -132,6 +132,14 @@
   .tag.long{background:#e6f0ea;color:var(--green-dark);}
   .tag.short{background:#fdeee9;color:var(--danger);}
   .tag.putting{background:#eef0fd;color:#33409e;}
+  .tag.incomplete{background:#fff4d6;color:#8a6d1d;}
+  .tag.complete{background:#e6f0ea;color:var(--green-dark);}
+  .unsaved-banner{
+    display:none;margin-top:12px;padding:8px 12px;border-radius:8px;
+    background:#fff4d6;border:1px solid var(--gold);color:#5c4813;
+    font-size:0.8rem;font-weight:600;
+  }
+  .unsaved-banner.show{display:block;}
   .chart-wrap{position:relative;height:220px;margin-top:8px;}
   .chart-wrap.small{height:190px;}
   .trends-layout{display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:1400px;margin:0 auto;}
@@ -346,9 +354,11 @@
 
       <div class="btn-row">
         <button class="btn" id="saveRoundBtn">Save Round to History</button>
+        <button class="btn secondary" id="saveIncompleteBtn" type="button">Save as Incomplete</button>
         <button class="btn secondary" id="clearRoundBtn">Clear Entry</button>
       </div>
-      <p class="small-note">Fairway/Green: Hit, or Miss Left / Right / Short / Long. Fairway is disabled for Par 3 holes.</p>
+      <div class="unsaved-banner" id="unsavedBanner">⚠️ You have unsaved scores. Tap "Save Round to History" (if you're done) or "Save as Incomplete" (to finish later) before leaving the app — entries are not saved automatically.</div>
+      <p class="small-note">Fairway/Green: Hit, or Miss Left / Right / Short / Long. Fairway is disabled for Par 3 holes. Not finished yet? Tap "Save as Incomplete" — pick it up later from Round History by tapping "Continue".</p>
     </div>
 
     <div class="card">
@@ -363,9 +373,9 @@
         <table class="history-table" id="historyTable">
           <thead>
             <tr>
-              <th>#</th><th>Date</th><th>Course</th><th>Score</th><th>Putts</th>
+              <th>#</th><th>Date</th><th>Course</th><th>Status</th><th>Score</th><th>Putts</th>
               <th>Par+</th><th>Dbl+</th><th>3-Putts</th><th>2+ Shots &lt;50</th>
-              <th>Penalties</th><th>Biggest Opportunity</th><th></th><th></th>
+              <th>Penalties</th><th>Biggest Opportunity</th><th></th><th></th><th></th>
             </tr>
           </thead>
           <tbody id="historyBody"></tbody>
@@ -829,6 +839,22 @@ function holeNettSP(h, hc){
 
 let holes = [];
 let history = [];
+let roundDirty = false; // true whenever the live Round Entry table has changes not yet saved to History
+
+// Shows/hides the "you have unsaved scores" banner under the Round Entry buttons. Only nags the
+// player if there's actually at least one score entered — an untouched blank scorecard isn't
+// "unsaved work" worth warning about.
+function updateUnsavedBanner(){
+  const banner = document.getElementById("unsavedBanner");
+  if(!banner) return;
+  const hasAnyScore = holes.some(h => h.score !== "");
+  banner.classList.toggle("show", roundDirty && hasAnyScore);
+}
+
+function markRoundDirty(){
+  roundDirty = true;
+  updateUnsavedBanner();
+}
 
 let patternChart = null, scoreTrendChart = null, qualityTrendChart = null, opportunityChart = null, impactTrendChart = null;
 const CHART_COLORS = {
@@ -927,6 +953,7 @@ function onHoleFieldChange(e){
   }
 
   holes[idx][field] = val;
+  markRoundDirty();
   if(field === "par"){
     renderHoleTable(); // re-render to enable/disable fairway select for par 3
     return;
@@ -1291,8 +1318,8 @@ function renderHistory(){
       emptyNote.textContent = `Enter or select a player name above to see their round history. (${history.length} round(s) saved under other names are hidden.)`;
     }
     emptyNote.style.display = "block";
-    renderTrendCharts(rounds);
-    renderCareerTotals(rounds);
+    renderTrendCharts(rounds.filter(r => r.status !== "incomplete"));
+    renderCareerTotals(rounds.filter(r => r.status !== "incomplete"));
     return;
   }
   emptyNote.style.display = "none";
@@ -1300,20 +1327,25 @@ function renderHistory(){
   visible.slice().reverse().forEach((entry, revPos)=>{
     const { r, idx } = entry;
     const displayNum = visible.length - revPos; // 1-based position within this player's own rounds
+    const isIncomplete = r.status === "incomplete";
+    const totalHoles = (r.holes || []).length;
+    const holesScored = (r.holes || []).filter(h => h.score !== "").length;
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${displayNum}</td>
       <td>${r.date || "-"}</td>
       <td>${r.course || "-"}</td>
-      <td>${r.stats.totScore}</td>
-      <td>${r.stats.totPutts}</td>
-      <td>${r.stats.parBetter}</td>
-      <td>${r.stats.doubleWorse}</td>
-      <td>${r.stats.threePutts}</td>
-      <td>${r.stats.shortGame2plus}</td>
-      <td>${r.stats.penalties}</td>
-      <td><span class="tag ${r.stats.opportunity==='Putting'?'putting':(r.stats.opportunity==='Short Game'?'short':'long')}">${r.stats.opportunity}</span></td>
+      <td><span class="tag ${isIncomplete ? "incomplete" : "complete"}">${isIncomplete ? "Incomplete" : "Complete"}</span></td>
+      <td>${isIncomplete ? `${holesScored}/${totalHoles} holes` : r.stats.totScore}</td>
+      <td>${isIncomplete ? "-" : r.stats.totPutts}</td>
+      <td>${isIncomplete ? "-" : r.stats.parBetter}</td>
+      <td>${isIncomplete ? "-" : r.stats.doubleWorse}</td>
+      <td>${isIncomplete ? "-" : r.stats.threePutts}</td>
+      <td>${isIncomplete ? "-" : r.stats.shortGame2plus}</td>
+      <td>${isIncomplete ? "-" : r.stats.penalties}</td>
+      <td>${isIncomplete ? "-" : `<span class="tag ${r.stats.opportunity==='Putting'?'putting':(r.stats.opportunity==='Short Game'?'short':'long')}">${r.stats.opportunity}</span>`}</td>
       <td><button class="btn secondary" style="padding:4px 8px;font-size:0.72rem;" data-view="${idx}">View</button></td>
+      <td>${isIncomplete ? `<button class="btn secondary" style="padding:4px 8px;font-size:0.72rem;" data-continue="${idx}">Continue</button>` : ""}</td>
       <td><button class="btn danger" style="padding:4px 8px;font-size:0.72rem;" data-del="${idx}">Delete</button></td>
     `;
     body.appendChild(tr);
@@ -1322,6 +1354,12 @@ function renderHistory(){
   body.querySelectorAll("[data-view]").forEach(btn=>{
     btn.addEventListener("click", ()=>{
       showHistoryDetail(Number(btn.dataset.view));
+    });
+  });
+
+  body.querySelectorAll("[data-continue]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      continueIncompleteRound(Number(btn.dataset.continue));
     });
   });
 
@@ -1334,8 +1372,15 @@ function renderHistory(){
     });
   });
 
-  renderTrendCharts(rounds);
-  renderCareerTotals(rounds);
+  renderTrendCharts(rounds.filter(r => r.status !== "incomplete"));
+  renderCareerTotals(rounds.filter(r => r.status !== "incomplete"));
+}
+
+// "Continue" on an Incomplete round just opens the Round Detail modal straight into Edit mode,
+// so the player lands directly on the scorecard ready to fill in the holes they haven't played yet.
+function continueIncompleteRound(idx){
+  showHistoryDetail(idx);
+  setHistoryDetailEditable(true);
 }
 
 // Career-wide (all saved rounds combined) totals and averages — separate from the per-round
@@ -1538,9 +1583,11 @@ function closeHistoryDetail(){
 }
 
 function exportCsv(){
-  // Export only the active player's own rounds — same scoping as the Round History table.
-  const rounds = getVisibleHistory().map(v => v.r);
-  if(rounds.length === 0){ alert("No rounds to export for the current player name."); return; }
+  // Export only the active player's own COMPLETE rounds — same scoping as the Round History
+  // table, minus any rounds still marked Incomplete (their totals/opportunity stats aren't
+  // meaningful for a round that hasn't been finished yet).
+  const rounds = getVisibleHistory().map(v => v.r).filter(r => r.status !== "incomplete");
+  if(rounds.length === 0){ alert("No completed rounds to export for the current player name."); return; }
   const headers = ["Round","Date","Course","Score","Putts","ParOrBetter","DoubleOrWorse","ThreePutts","TwoPlusShotsUnder50","PenaltyStrokes","BiggestOpportunity"];
   const rows = rounds.map((r,i)=>[
     i+1, r.date||"", r.course||"", r.stats.totScore, r.stats.totPutts, r.stats.parBetter,
@@ -1560,6 +1607,24 @@ function exportCsv(){
 document.getElementById("holeCount").addEventListener("change", (e)=>{
   buildHoles(Number(e.target.value));
   renderHoleTable();
+  roundDirty = false; // fresh blank scorecard — nothing to lose yet
+  updateUnsavedBanner();
+});
+
+// Date/Course are part of the saved round record too, so changing them also counts as
+// "unsaved work" for the reminder banner.
+document.getElementById("roundDate").addEventListener("input", markRoundDirty);
+document.getElementById("roundCourse").addEventListener("input", markRoundDirty);
+
+// Best-effort reminder for regular browser tabs — iOS PWAs in standalone mode don't reliably
+// fire beforeunload, so the on-screen "unsaved scores" banner above is the primary safety net.
+window.addEventListener("beforeunload", (e)=>{
+  const hasAnyScore = holes.some(h => h.score !== "");
+  if(roundDirty && hasAnyScore){
+    e.preventDefault();
+    e.returnValue = "";
+    return "";
+  }
 });
 
 document.getElementById("historyDetailClose").addEventListener("click", closeHistoryDetail);
@@ -1597,11 +1662,17 @@ document.getElementById("historyDetailSaveBtn").addEventListener("click", ()=>{
     holes: JSON.parse(JSON.stringify(historyDetailHoles))
   };
   updated.stats = computeStats(updated.holes, num(hc));
+  // Finished filling in the rest of an Incomplete round from this modal? Promote it to Complete
+  // automatically. (Never auto-demotes an already-Complete round, even if a score gets cleared —
+  // that's the player's call, made explicitly via Save as Incomplete.)
+  if(updated.status === "incomplete" && updated.holes.every(h => h.score !== "")){
+    updated.status = "complete";
+  }
   history[idx] = updated;
   saveHistory();
   renderHistory();
   showHistoryDetail(idx);
-  alert("Round updated.");
+  alert(updated.status === "incomplete" ? "Round updated (still marked Incomplete)." : "Round updated.");
 });
 
 document.getElementById("playerHC").addEventListener("input", updateTotalsAndSummary);
@@ -1646,14 +1717,12 @@ document.getElementById("deleteProfileBtn").addEventListener("click", ()=>{
   renderHistory();
 });
 
-document.getElementById("saveRoundBtn").addEventListener("click", ()=>{
-  const scoredHoles = holes.filter(h=>h.score !== "");
-  if(scoredHoles.length === 0){
-    alert("Enter at least one hole score before saving.");
-    return;
-  }
+// Shared by both Save Round to History (status "complete") and Save as Incomplete
+// (status "incomplete") — everything about building the saved record is identical,
+// only the status tag (and the confirmation message) differ.
+function buildRoundRecord(status){
   const stats = updateTotalsAndSummary();
-  history.push({
+  return {
     date: document.getElementById("roundDate").value || new Date().toISOString().slice(0,10),
     course: document.getElementById("roundCourse").value || "",
     playerName: document.getElementById("playerName").value || "",
@@ -1668,11 +1737,31 @@ document.getElementById("saveRoundBtn").addEventListener("click", ()=>{
     hi: document.getElementById("playerHI").value || "",
     hc: document.getElementById("playerHC").value || "",
     holes: JSON.parse(JSON.stringify(holes)),
-    stats
-  });
+    stats,
+    status
+  };
+}
+
+function commitRound(status, savedMessage){
+  const scoredHoles = holes.filter(h=>h.score !== "");
+  if(scoredHoles.length === 0){
+    alert(`Enter at least one hole score before ${status === "incomplete" ? "saving as incomplete" : "saving"}.`);
+    return;
+  }
+  history.push(buildRoundRecord(status));
   saveHistory();
+  roundDirty = false; // just saved, current entry now matches what's in History
+  updateUnsavedBanner();
   renderHistory();
-  alert("Round saved to history.");
+  alert(savedMessage);
+}
+
+document.getElementById("saveRoundBtn").addEventListener("click", ()=>{
+  commitRound("complete", "Round saved to history.");
+});
+
+document.getElementById("saveIncompleteBtn").addEventListener("click", ()=>{
+  commitRound("incomplete", 'Round saved as Incomplete. Find it in Round History and tap "Continue" whenever you\'re ready to finish it.');
 });
 
 document.getElementById("clearRoundBtn").addEventListener("click", ()=>{
@@ -1680,6 +1769,8 @@ document.getElementById("clearRoundBtn").addEventListener("click", ()=>{
   buildHoles(Number(document.getElementById("holeCount").value));
   renderHoleTable();
   document.getElementById("roundCourse").value = "";
+  roundDirty = false;
+  updateUnsavedBanner();
 });
 
 document.getElementById("clearHistoryBtn").addEventListener("click", ()=>{
