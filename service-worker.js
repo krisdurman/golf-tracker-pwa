@@ -1,4 +1,4 @@
-const CACHE_NAME = "golf-tracker-v9";
+const CACHE_NAME = "golf-tracker-v10";
 const CORE_ASSETS = [
   "./",
   "./index.html",

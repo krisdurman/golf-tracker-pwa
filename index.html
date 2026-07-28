@@ -293,11 +293,11 @@
               <th>Score</th>
               <th>Nett</th>
               <th>SP</th>
-              <th>Putts</th>
               <th>Fairway</th>
               <th>Green (GIR)</th>
               <th>Shots &lt;50</th>
               <th>Penalties</th>
+              <th>Putts</th>
             </tr>
           </thead>
           <tbody id="holeBody"></tbody>
@@ -309,11 +309,11 @@
               <td id="frontScore">-</td>
               <td id="frontNett">-</td>
               <td id="frontSP">-</td>
-              <td id="frontPutts">-</td>
               <td></td>
               <td></td>
               <td id="frontShortShots">-</td>
               <td id="frontPenalties">-</td>
+              <td id="frontPutts">-</td>
             </tr>
             <tr id="backRow" class="subtotal-row">
               <td>Back 9</td>
@@ -322,11 +322,11 @@
               <td id="backScore">-</td>
               <td id="backNett">-</td>
               <td id="backSP">-</td>
-              <td id="backPutts">-</td>
               <td></td>
               <td></td>
               <td id="backShortShots">-</td>
               <td id="backPenalties">-</td>
+              <td id="backPutts">-</td>
             </tr>
             <tr class="grand-row">
               <td>Total</td>
@@ -335,10 +335,10 @@
               <td id="totScore">-</td>
               <td id="totNett">-</td>
               <td id="totSP">-</td>
-              <td id="totPutts">-</td>
               <td colspan="2"></td>
               <td id="totShortShots">-</td>
               <td id="totPenalties">-</td>
+              <td id="totPutts">-</td>
             </tr>
           </tfoot>
         </table>
@@ -518,11 +518,11 @@
             <th>Score</th>
             <th>Nett</th>
             <th>SP</th>
-            <th>Putts</th>
             <th>Fairway</th>
             <th>Green (GIR)</th>
             <th>Shots &lt;50</th>
             <th>Penalties</th>
+            <th>Putts</th>
           </tr>
         </thead>
         <tbody id="historyDetailBody"></tbody>
@@ -534,10 +534,10 @@
             <td id="hdFrontScore">-</td>
             <td id="hdFrontNett">-</td>
             <td id="hdFrontSP">-</td>
-            <td id="hdFrontPutts">-</td>
             <td></td><td></td>
             <td id="hdFrontShortShots">-</td>
             <td id="hdFrontPenalties">-</td>
+            <td id="hdFrontPutts">-</td>
           </tr>
           <tr class="subtotal-row" id="hdBackRow">
             <td>Back 9</td>
@@ -546,10 +546,10 @@
             <td id="hdBackScore">-</td>
             <td id="hdBackNett">-</td>
             <td id="hdBackSP">-</td>
-            <td id="hdBackPutts">-</td>
             <td></td><td></td>
             <td id="hdBackShortShots">-</td>
             <td id="hdBackPenalties">-</td>
+            <td id="hdBackPutts">-</td>
           </tr>
           <tr class="grand-row">
             <td>Total</td>
@@ -558,10 +558,10 @@
             <td id="hdTotScore">-</td>
             <td id="hdTotNett">-</td>
             <td id="hdTotSP">-</td>
-            <td id="hdTotPutts">-</td>
             <td colspan="2"></td>
             <td id="hdTotShortShots">-</td>
             <td id="hdTotPenalties">-</td>
+            <td id="hdTotPutts">-</td>
           </tr>
         </tfoot>
       </table>
@@ -787,6 +787,20 @@ function defaultHole(n){
   return {hole:n, stroke:n, par:4, score:"", putts:"", fairway:"na", green:"na", shortShots:0, penalties:0};
 }
 
+// Stroke Index is always 1-18, one value per hole, no repeats — build the <option> list once and reuse.
+function strokeOptionsHtml(selected){
+  let out = "";
+  for(let n=1; n<=18; n++){
+    out += `<option value="${n}" ${Number(selected)===n?"selected":""}>${n}</option>`;
+  }
+  return out;
+}
+
+// Par is only ever 3, 4, or 5 on a real course.
+function parOptionsHtml(selected){
+  return [3,4,5].map(n=>`<option value="${n}" ${Number(selected)===n?"selected":""}>${n}</option>`).join("");
+}
+
 function getHC(){
   const el = document.getElementById("playerHC");
   return el ? num(el.value) : 0;
@@ -855,12 +869,11 @@ function renderHoleTable(){
     const {nett, sp} = holeNettSP(h, hc);
     tr.innerHTML = `
       <td>${h.hole}</td>
-      <td><input type="number" min="1" max="18" value="${h.stroke}" data-idx="${idx}" data-field="stroke" style="width:40px;"></td>
-      <td><input type="number" min="3" max="6" value="${h.par}" data-idx="${idx}" data-field="par" style="width:44px;"></td>
+      <td><select data-idx="${idx}" data-field="stroke">${strokeOptionsHtml(h.stroke)}</select></td>
+      <td><select data-idx="${idx}" data-field="par">${parOptionsHtml(h.par)}</select></td>
       <td><input type="number" min="1" max="15" value="${h.score}" data-idx="${idx}" data-field="score" style="width:44px;"></td>
       <td class="calc-cell" id="nett-${idx}">${nett === "" ? "-" : nett}</td>
       <td class="calc-cell" id="sp-${idx}">${sp === "" ? "-" : sp}</td>
-      <td><input type="number" min="0" max="6" value="${h.putts}" data-idx="${idx}" data-field="putts" style="width:44px;"></td>
       <td>
         <select data-idx="${idx}" data-field="fairway" ${isPar3 ? "disabled" : ""}>
           <option value="na" ${h.fairway==="na"?"selected":""}>N/A</option>
@@ -883,6 +896,7 @@ function renderHoleTable(){
       </td>
       <td><input type="number" min="0" max="5" value="${h.shortShots}" data-idx="${idx}" data-field="shortShots" style="width:44px;"></td>
       <td><input type="number" min="0" max="5" value="${h.penalties}" data-idx="${idx}" data-field="penalties" style="width:44px;"></td>
+      <td><input type="number" min="0" max="6" value="${h.putts}" data-idx="${idx}" data-field="putts" style="width:44px;"></td>
     `;
     body.appendChild(tr);
   });
@@ -902,6 +916,16 @@ function onHoleFieldChange(e){
   if(["par","score","putts","shortShots","penalties","stroke"].includes(field)){
     val = val === "" ? "" : Number(val);
   }
+
+  if(field === "stroke"){
+    const dup = holes.some((h, i) => i !== idx && h.stroke !== "" && Number(h.stroke) === Number(val));
+    if(dup){
+      alert(`Stroke Index ${val} is already used on another hole. Each hole needs its own unique Stroke Index (1-18).`);
+      renderHoleTable(); // redraw to snap the dropdown back to the unchanged value
+      return;
+    }
+  }
+
   holes[idx][field] = val;
   if(field === "par"){
     renderHoleTable(); // re-render to enable/disable fairway select for par 3
@@ -1386,12 +1410,11 @@ function renderHistoryDetailBody(){
     return `
       <tr>
         <td>${h.hole}</td>
-        <td><input type="number" min="1" max="18" value="${h.stroke}" data-hidx="${idx}" data-field="stroke" disabled></td>
-        <td><input type="number" min="3" max="6" value="${h.par}" data-hidx="${idx}" data-field="par" disabled></td>
+        <td><select data-hidx="${idx}" data-field="stroke" disabled>${strokeOptionsHtml(h.stroke)}</select></td>
+        <td><select data-hidx="${idx}" data-field="par" disabled>${parOptionsHtml(h.par)}</select></td>
         <td><input type="number" min="1" max="15" value="${h.score}" data-hidx="${idx}" data-field="score" disabled></td>
         <td class="calc-cell" id="hd-nett-${idx}">-</td>
         <td class="calc-cell" id="hd-sp-${idx}">-</td>
-        <td><input type="number" min="0" max="6" value="${h.putts}" data-hidx="${idx}" data-field="putts" disabled></td>
         <td>
           <select data-hidx="${idx}" data-field="fairway" ${isPar3 ? "disabled" : ""} disabled>
             <option value="na" ${h.fairway==="na"?"selected":""}>N/A</option>
@@ -1414,6 +1437,7 @@ function renderHistoryDetailBody(){
         </td>
         <td><input type="number" min="0" max="5" value="${h.shortShots}" data-hidx="${idx}" data-field="shortShots" disabled></td>
         <td><input type="number" min="0" max="5" value="${h.penalties}" data-hidx="${idx}" data-field="penalties" disabled></td>
+        <td><input type="number" min="0" max="6" value="${h.putts}" data-hidx="${idx}" data-field="putts" disabled></td>
       </tr>
     `;
   }).join("");
@@ -1431,6 +1455,17 @@ function onHistoryDetailFieldChange(e){
   if(["par","score","putts","shortShots","penalties","stroke"].includes(field)){
     val = val === "" ? "" : Number(val);
   }
+
+  if(field === "stroke"){
+    const dup = historyDetailHoles.some((h, i) => i !== idx && h.stroke !== "" && Number(h.stroke) === Number(val));
+    if(dup){
+      alert(`Stroke Index ${val} is already used on another hole. Each hole needs its own unique Stroke Index (1-18).`);
+      renderHistoryDetailBody(); // redraw to snap the dropdown back to the unchanged value
+      setHistoryDetailEditable(historyDetailEditing); // re-render wipes disabled state, so re-apply it
+      return;
+    }
+  }
+
   historyDetailHoles[idx][field] = val;
   if(field === "par"){
     renderHistoryDetailBody(); // re-render to enable/disable fairway select for par 3
