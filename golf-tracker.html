@@ -495,7 +495,7 @@
     </div>
 
     <div class="card">
-      <h2>Biggest Opportunity</h2>
+      <h2>Biggest Opportunity (Est. Strokes Lost)</h2>
       <div id="opportunityBadgeWrap"><span class="opportunity-badge" id="opportunityBadge">-</span></div>
       <p class="small-note" id="opportunityExplain"></p>
     </div>
@@ -519,7 +519,7 @@
     <p class="empty-note" id="trendEmpty2">Career running total of Sub-Par, Par, and Over-Par holes.</p>
   </div>
   <div class="card">
-    <h2>Opportunity Breakdown (All Rounds)</h2>
+    <h2>Where Strokes Are Lost (All Rounds)</h2>
     <div class="chart-wrap"><canvas id="opportunityChart"></canvas></div>
   </div>
   <div class="card">
@@ -1495,9 +1495,21 @@ function onHoleFieldChange(e){
 
 function num(v){ return (v === "" || v === null || v === undefined || isNaN(v)) ? 0 : Number(v); }
 
+// Estimated per-miss stroke costs for the "strokes lost" classifier below, informed by Mark
+// Broadie's strokes-gained research (Every Shot Counts) and Arccos amateur shot-tracking data:
+// for most club/social golfers, approach shots are the single biggest lever for scoring,
+// followed by driving, with putting mattering less in aggregate than folklore suggests (though
+// still a real, avoidable single-hole loss). Putting and Short Game losses below are computed
+// EXACTLY from recorded putts/short-game shots (strokes taken beyond the "expected" baseline of
+// a 2-putt or a single up-and-down shot); Driving and Approach use an estimated cost per miss
+// since the app only records hit/miss for those, not the exact strokes it cost.
+const FAIRWAY_MISS_COST = 0.3; // estimated strokes lost per missed fairway (driving)
+const GREEN_MISS_COST = 0.5;   // estimated strokes lost per missed green (approach) — usually the biggest lever
+
 function computeStats(holeArr, hc){
   hc = num(hc);
   let totPar=0, totScore=0, totPutts=0, parBetter=0, doubleWorse=0, threePutts=0, shortGame2plus=0;
+  let strokesLostPutting=0, strokesLostShortGame=0, strokesLostLongGame=0;
   let subPar=0, parCount=0, overPar=0;
   let fwHit=0, fwMiss=0, fwLeft=0, fwRight=0, fwShort=0, fwLong=0;
   let grHit=0, grMiss=0, grLeft=0, grRight=0, grShort=0, grLong=0;
@@ -1539,9 +1551,16 @@ function computeStats(holeArr, hc){
     if(h.putts !== "" && putts >= 3) threePutts++;
     if(num(h.shortShots) >= 2) shortGame2plus++;
 
+    // Exact strokes lost: a 2-putt is the expected baseline, so only strokes beyond that count;
+    // likewise a single short-game shot (one chip/pitch) is the expected baseline for a missed
+    // green, so only a 2nd-or-later short-game shot on the same hole counts as a loss.
+    if(h.putts !== "" && putts > 2) strokesLostPutting += (putts - 2);
+    if(num(h.shortShots) > 1) strokesLostShortGame += (num(h.shortShots) - 1);
+
     if(h.fairway === "hit") fwHit++;
     else if(h.fairway !== "na" && h.fairway !== ""){
       fwMiss++;
+      strokesLostLongGame += FAIRWAY_MISS_COST;
       if(h.fairway==="left") fwLeft++;
       if(h.fairway==="right") fwRight++;
       if(h.fairway==="short") fwShort++;
@@ -1551,6 +1570,7 @@ function computeStats(holeArr, hc){
     if(h.green === "hit") grHit++;
     else if(h.green !== "na" && h.green !== ""){
       grMiss++;
+      strokesLostLongGame += GREEN_MISS_COST;
       if(h.green==="left") grLeft++;
       if(h.green==="right") grRight++;
       if(h.green==="short") grShort++;
@@ -1558,13 +1578,15 @@ function computeStats(holeArr, hc){
     }
   });
 
-  const puttingScore = threePutts;
-  const shortGameScore = shortGame2plus;
-  const longGameScore = fwMiss + grMiss;
-
+  // "Biggest Opportunity" is now driven by ESTIMATED STROKES LOST rather than raw miss counts —
+  // a single 3-putt (worth exactly 1+ stroke) is weighed against, say, a missed fairway (worth an
+  // estimated 0.3 strokes) instead of being counted as an equal "1 miss" against it. This avoids
+  // the old method's bias toward whichever bucket had the most counting opportunities (Long Game
+  // has ~32 chances a round vs. 18 for Putting), and better reflects where strokes actually went.
   let opportunity = "Long Game";
-  if(shortGameScore > longGameScore && shortGameScore >= puttingScore) opportunity = "Short Game";
-  if(puttingScore > longGameScore && puttingScore > shortGameScore) opportunity = "Putting";
+  let topStrokesLost = strokesLostLongGame;
+  if(strokesLostShortGame > topStrokesLost){ opportunity = "Short Game"; topStrokesLost = strokesLostShortGame; }
+  if(strokesLostPutting > topStrokesLost){ opportunity = "Putting"; topStrokesLost = strokesLostPutting; }
 
   return {
     totPar, totScore, totPutts, parBetter, doubleWorse, threePutts, shortGame2plus,
@@ -1576,6 +1598,7 @@ function computeStats(holeArr, hc){
     frontPar, backPar, frontScore, backScore, frontPutts, backPutts,
     totShortShots, frontShortShots, backShortShots,
     totPenalties, frontPenalties, backPenalties,
+    strokesLostPutting, strokesLostShortGame, strokesLostLongGame,
     opportunity
   };
 }
@@ -1664,7 +1687,7 @@ function updateTotalsAndSummary(){
   const badge = document.getElementById("opportunityBadge");
   badge.textContent = stats.opportunity;
   const explain = document.getElementById("opportunityExplain");
-  explain.textContent = `Based on ${stats.threePutts} three-putt(s), ${stats.shortGame2plus} short-game miss(es), and ${stats.fwMiss + stats.grMiss} fairway/green miss(es) this round.`;
+  explain.textContent = `Estimated strokes lost this round — Putting: ${stats.strokesLostPutting.toFixed(1)}, Short Game: ${stats.strokesLostShortGame.toFixed(1)}, Long Game (driving/approach): ${stats.strokesLostLongGame.toFixed(1)}.`;
 
   const goals = suggestGoal(stats);
   document.getElementById("goalBox").innerHTML = goals.map(g=>`<strong>•</strong> ${g}`).join("<br>");
@@ -1784,22 +1807,32 @@ function renderTrendCharts(rounds){
     }
   });
 
-  // Opportunity breakdown across all saved rounds (already a career-wide aggregate, not per-round)
-  const oppCounts = {Putting:0, "Short Game":0, "Long Game":0};
-  rounds.forEach(r=>{ oppCounts[r.stats.opportunity] = (oppCounts[r.stats.opportunity]||0) + 1; });
+  // Where strokes are actually lost, summed across every saved round — total ESTIMATED STROKES
+  // LOST per category (not a count of how many rounds were "tagged" that category), so a handful
+  // of costly 3-putt rounds shows up proportionally rather than being outvoted by many rounds
+  // with small, single-digit long-game misses.
+  const oppTotals = {Putting:0, "Short Game":0, "Long Game":0};
+  rounds.forEach(r=>{
+    oppTotals.Putting += num(r.stats.strokesLostPutting);
+    oppTotals["Short Game"] += num(r.stats.strokesLostShortGame);
+    oppTotals["Long Game"] += num(r.stats.strokesLostLongGame);
+  });
   opportunityChart = destroyChart(opportunityChart);
   opportunityChart = new Chart(document.getElementById("opportunityChart"), {
     type:"doughnut",
     data:{
-      labels:Object.keys(oppCounts),
+      labels:Object.keys(oppTotals),
       datasets:[{
-        data:Object.values(oppCounts),
+        data:Object.values(oppTotals).map(v => Math.round(v * 10) / 10),
         backgroundColor:[CHART_COLORS.blue, CHART_COLORS.red, CHART_COLORS.green]
       }]
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{position:"bottom"}}
+      plugins:{
+        legend:{position:"bottom"},
+        tooltip:{callbacks:{label: (ctx) => `${ctx.label}: ${ctx.parsed} strokes lost (est.)`}}
+      }
     }
   });
 
