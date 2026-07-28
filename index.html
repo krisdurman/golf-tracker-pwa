@@ -272,7 +272,16 @@
 
     <div class="card">
       <h2>Course Library <span style="font-size:0.72rem;font-weight:500;color:var(--muted);">(Admin)</span></h2>
-      <p class="small-note" style="margin-top:-6px;">Add a course that isn't in the suggested list, or set up its Par &amp; Stroke Index scorecard once here so Round Entry can auto-fill it every time that course is played — no re-typing Stroke Index on the tee.</p>
+      <p class="small-note" style="margin-top:-6px;">Add a course that isn't in the suggested list, or set up its Par &amp; Stroke Index scorecard once here so Round Entry can auto-fill it every time that course is played — no re-typing Stroke Index on the tee. Courses with several tees (Men's/Ladies, Club/Championship, etc.) auto-load the right one from the Gender and Tee Marker fields above.</p>
+
+      <div class="round-meta" style="border-bottom:1px dashed var(--line);padding-bottom:14px;">
+        <div>
+          <label>Import Courses from CSV</label>
+          <input type="file" id="csvImportFile" accept=".csv,text/csv" style="width:230px;">
+        </div>
+      </div>
+      <p class="small-note" id="csvImportStatus" style="margin-top:-6px;">Expected columns: club_name, course_layout, union, city, tee_name, tee_colour, player_category, hole, par, stroke_index, distance_metres, course_rating, slope_rating, scorecard_status. Re-importing a course replaces its previous data.</p>
+
       <div class="round-meta">
         <div class="course-field-wrap">
           <label>Course Name</label>
@@ -287,11 +296,12 @@
         </div>
         <div>
           <label>Saved Courses</label>
-          <select id="libCourseSelect" style="width:220px;">
+          <select id="libCourseSelect" style="width:260px;">
             <option value="">+ New Course</option>
           </select>
         </div>
       </div>
+      <p class="small-note" id="libMultiTeeNote" style="display:none;"></p>
       <div class="table-scroll">
         <table id="libScorecardTable">
           <thead>
@@ -304,7 +314,7 @@
         <button class="btn" id="saveCourseBtn" type="button">Save Course</button>
         <button class="btn danger" id="deleteCourseBtn" type="button">Delete Course</button>
       </div>
-      <p class="small-note">Saved courses show up in the Course suggestions below and their Par/Stroke Index load automatically once you pick that course and hole count in Round Entry.</p>
+      <p class="small-note">Saved courses show up in the Course suggestions below and their Par/Stroke Index load automatically once you pick that course, Gender, and Tee Marker in Round Entry / Player Profile.</p>
     </div>
 
     <div class="card">
@@ -328,10 +338,11 @@
         </div>
       </div>
 
-      <div class="btn-row" style="margin-top:0;margin-bottom:14px;">
+      <div class="btn-row" style="margin-top:0;margin-bottom:4px;">
         <button class="btn secondary" id="loadScorecardBtn" type="button" style="padding:5px 10px;font-size:0.75rem;">📋 Load Saved Scorecard</button>
         <button class="btn secondary" id="saveScorecardBtn" type="button" style="padding:5px 10px;font-size:0.75rem;">💾 Remember This Scorecard</button>
       </div>
+      <p class="small-note" id="courseRatingNote" style="margin-top:0;margin-bottom:14px;min-height:1em;"></p>
 
       <div class="table-scroll">
         <table id="holeTable">
@@ -626,41 +637,220 @@
 const STORAGE_KEY = "golfTrackerHistoryV1";
 const PROFILES_KEY = "golfTrackerProfilesV1";
 const COURSES_KEY = "golfTrackerCoursesV1";
+const COURSES_SEEDED_KEY = "golfTrackerCoursesSeededV1"; // ensures the built-in seed list merges in exactly once
 
-// Course Library: Par + Stroke Index scorecards saved once per course (and hole count), reused
-// on every future round at that course so nobody has to re-enter Stroke Index on the tee.
+// Course Library: each course can have several tee-sets (e.g. Men's Championship, Ladies, Club,
+// Executive) — real scorecards vary Par/Stroke Index and distance by tee, not just by hole count.
+// Saved once (by hand, or bulk-imported from a CSV), reused on every future round at that course
+// so nobody has to re-enter Stroke Index on the tee.
 let courseLibrary = [];
+
+// Seed data researched for Gauteng clubs — merged into courseLibrary once on first load (see
+// loadCourses). Courses without a public scorecard yet are included as name-only entries so they
+// still show up in Round Entry's suggestions.
+const SEED_COURSES_GAUTENG = [{"name":"Royal Johannesburg & Kensington Golf Club — West Course","union":"Central Gauteng","city":"Johannesburg","teeSets":[{"teeName":"Pro","teeColour":"Blue","gender":"Men","courseRating":73.8,"slopeRating":137.0,"holes":[{"hole":1,"par":4,"stroke":6,"distance":386},{"hole":2,"par":4,"stroke":8,"distance":347},{"hole":3,"par":4,"stroke":2,"distance":412},{"hole":4,"par":3,"stroke":14,"distance":188},{"hole":5,"par":4,"stroke":4,"distance":434},{"hole":6,"par":5,"stroke":12,"distance":489},{"hole":7,"par":3,"stroke":10,"distance":160},{"hole":8,"par":4,"stroke":16,"distance":348},{"hole":9,"par":5,"stroke":18,"distance":480},{"hole":10,"par":4,"stroke":13,"distance":374},{"hole":11,"par":5,"stroke":15,"distance":493},{"hole":12,"par":4,"stroke":3,"distance":467},{"hole":13,"par":4,"stroke":5,"distance":353},{"hole":14,"par":3,"stroke":17,"distance":111},{"hole":15,"par":4,"stroke":9,"distance":373},{"hole":16,"par":4,"stroke":1,"distance":450},{"hole":17,"par":3,"stroke":7,"distance":214},{"hole":18,"par":5,"stroke":11,"distance":507}]},{"teeName":"Championship","teeColour":"Yellow","gender":"Men","courseRating":72.3,"slopeRating":131.0,"holes":[{"hole":1,"par":4,"stroke":6,"distance":379},{"hole":2,"par":4,"stroke":8,"distance":334},{"hole":3,"par":4,"stroke":2,"distance":405},{"hole":4,"par":3,"stroke":14,"distance":178},{"hole":5,"par":4,"stroke":4,"distance":402},{"hole":6,"par":5,"stroke":12,"distance":479},{"hole":7,"par":3,"stroke":10,"distance":144},{"hole":8,"par":4,"stroke":16,"distance":340},{"hole":9,"par":5,"stroke":18,"distance":440},{"hole":10,"par":4,"stroke":13,"distance":361},{"hole":11,"par":5,"stroke":15,"distance":467},{"hole":12,"par":4,"stroke":3,"distance":406},{"hole":13,"par":4,"stroke":5,"distance":350},{"hole":14,"par":3,"stroke":17,"distance":105},{"hole":15,"par":4,"stroke":9,"distance":348},{"hole":16,"par":4,"stroke":1,"distance":431},{"hole":17,"par":3,"stroke":7,"distance":185},{"hole":18,"par":5,"stroke":11,"distance":501}]},{"teeName":"Mens","teeColour":"White","gender":"Men","courseRating":70.3,"slopeRating":125.0,"holes":[{"hole":1,"par":4,"stroke":6,"distance":374},{"hole":2,"par":4,"stroke":8,"distance":309},{"hole":3,"par":4,"stroke":2,"distance":362},{"hole":4,"par":3,"stroke":14,"distance":170},{"hole":5,"par":4,"stroke":4,"distance":380},{"hole":6,"par":5,"stroke":12,"distance":446},{"hole":7,"par":3,"stroke":10,"distance":127},{"hole":8,"par":4,"stroke":16,"distance":310},{"hole":9,"par":5,"stroke":18,"distance":430},{"hole":10,"par":4,"stroke":13,"distance":346},{"hole":11,"par":5,"stroke":15,"distance":426},{"hole":12,"par":4,"stroke":3,"distance":389},{"hole":13,"par":4,"stroke":5,"distance":337},{"hole":14,"par":3,"stroke":17,"distance":95},{"hole":15,"par":4,"stroke":9,"distance":324},{"hole":16,"par":4,"stroke":1,"distance":411},{"hole":17,"par":3,"stroke":7,"distance":161},{"hole":18,"par":5,"stroke":11,"distance":462}]},{"teeName":"Womens","teeColour":"Red","gender":"Women","courseRating":72.4,"slopeRating":132.0,"holes":[{"hole":1,"par":4,"stroke":6,"distance":343},{"hole":2,"par":4,"stroke":8,"distance":294},{"hole":3,"par":4,"stroke":2,"distance":322},{"hole":4,"par":3,"stroke":14,"distance":152},{"hole":5,"par":4,"stroke":4,"distance":334},{"hole":6,"par":5,"stroke":12,"distance":400},{"hole":7,"par":3,"stroke":10,"distance":108},{"hole":8,"par":4,"stroke":16,"distance":273},{"hole":9,"par":5,"stroke":18,"distance":371},{"hole":10,"par":4,"stroke":13,"distance":311},{"hole":11,"par":5,"stroke":15,"distance":369},{"hole":12,"par":4,"stroke":3,"distance":343},{"hole":13,"par":4,"stroke":5,"distance":319},{"hole":14,"par":3,"stroke":17,"distance":95},{"hole":15,"par":4,"stroke":9,"distance":313},{"hole":16,"par":4,"stroke":1,"distance":346},{"hole":17,"par":3,"stroke":7,"distance":149},{"hole":18,"par":5,"stroke":11,"distance":438}]}]},{"name":"Royal Johannesburg & Kensington Golf Club — East Course","union":"Central Gauteng","city":"Johannesburg","teeSets":[{"teeName":"Championship","teeColour":"Championship","gender":"Men","courseRating":null,"slopeRating":null,"holes":[{"hole":1,"par":5,"stroke":18,"distance":472},{"hole":2,"par":3,"stroke":6,"distance":231},{"hole":3,"par":4,"stroke":4,"distance":459},{"hole":4,"par":4,"stroke":2,"distance":435},{"hole":5,"par":3,"stroke":12,"distance":162},{"hole":6,"par":5,"stroke":14,"distance":530},{"hole":7,"par":4,"stroke":10,"distance":420},{"hole":8,"par":5,"stroke":16,"distance":506},{"hole":9,"par":4,"stroke":8,"distance":389},{"hole":10,"par":4,"stroke":3,"distance":474},{"hole":11,"par":4,"stroke":1,"distance":457},{"hole":12,"par":3,"stroke":9,"distance":181},{"hole":13,"par":4,"stroke":7,"distance":384},{"hole":14,"par":4,"stroke":11,"distance":413},{"hole":15,"par":4,"stroke":5,"distance":440},{"hole":16,"par":3,"stroke":13,"distance":190},{"hole":17,"par":4,"stroke":15,"distance":354},{"hole":18,"par":5,"stroke":17,"distance":504}]},{"teeName":"Club","teeColour":"Club","gender":"Men","courseRating":null,"slopeRating":null,"holes":[{"hole":1,"par":5,"stroke":18,"distance":463},{"hole":2,"par":3,"stroke":6,"distance":211},{"hole":3,"par":4,"stroke":4,"distance":403},{"hole":4,"par":4,"stroke":2,"distance":411},{"hole":5,"par":3,"stroke":12,"distance":139},{"hole":6,"par":5,"stroke":14,"distance":510},{"hole":7,"par":4,"stroke":10,"distance":355},{"hole":8,"par":5,"stroke":16,"distance":457},{"hole":9,"par":4,"stroke":8,"distance":374},{"hole":10,"par":4,"stroke":3,"distance":450},{"hole":11,"par":4,"stroke":1,"distance":423},{"hole":12,"par":3,"stroke":9,"distance":168},{"hole":13,"par":4,"stroke":7,"distance":361},{"hole":14,"par":4,"stroke":11,"distance":367},{"hole":15,"par":4,"stroke":5,"distance":405},{"hole":16,"par":3,"stroke":13,"distance":152},{"hole":17,"par":4,"stroke":15,"distance":348},{"hole":18,"par":5,"stroke":17,"distance":468}]},{"teeName":"Executive","teeColour":"Executive","gender":"Men","courseRating":null,"slopeRating":null,"holes":[{"hole":1,"par":5,"stroke":18,"distance":449},{"hole":2,"par":3,"stroke":6,"distance":184},{"hole":3,"par":4,"stroke":4,"distance":386},{"hole":4,"par":4,"stroke":2,"distance":386},{"hole":5,"par":3,"stroke":12,"distance":130},{"hole":6,"par":5,"stroke":14,"distance":465},{"hole":7,"par":4,"stroke":10,"distance":343},{"hole":8,"par":5,"stroke":16,"distance":422},{"hole":9,"par":4,"stroke":8,"distance":351},{"hole":10,"par":4,"stroke":3,"distance":411},{"hole":11,"par":4,"stroke":1,"distance":411},{"hole":12,"par":3,"stroke":9,"distance":153},{"hole":13,"par":4,"stroke":7,"distance":341},{"hole":14,"par":4,"stroke":11,"distance":330},{"hole":15,"par":4,"stroke":5,"distance":378},{"hole":16,"par":3,"stroke":13,"distance":127},{"hole":17,"par":4,"stroke":15,"distance":335},{"hole":18,"par":5,"stroke":17,"distance":434}]},{"teeName":"Classic","teeColour":"Classic","gender":"Women","courseRating":null,"slopeRating":null,"holes":[{"hole":1,"par":5,"stroke":18,"distance":418},{"hole":2,"par":3,"stroke":6,"distance":165},{"hole":3,"par":4,"stroke":4,"distance":318},{"hole":4,"par":4,"stroke":2,"distance":341},{"hole":5,"par":3,"stroke":12,"distance":102},{"hole":6,"par":5,"stroke":14,"distance":432},{"hole":7,"par":4,"stroke":10,"distance":328},{"hole":8,"par":5,"stroke":16,"distance":394},{"hole":9,"par":4,"stroke":8,"distance":316},{"hole":10,"par":4,"stroke":3,"distance":366},{"hole":11,"par":4,"stroke":1,"distance":364},{"hole":12,"par":3,"stroke":9,"distance":141},{"hole":13,"par":4,"stroke":7,"distance":326},{"hole":14,"par":4,"stroke":11,"distance":300},{"hole":15,"par":4,"stroke":5,"distance":350},{"hole":16,"par":3,"stroke":13,"distance":110},{"hole":17,"par":4,"stroke":15,"distance":296},{"hole":18,"par":5,"stroke":17,"distance":399}]}]},{"name":"Pretoria Golf Club","union":"Gauteng North","city":"Pretoria","teeSets":[{"teeName":"White","teeColour":"White","gender":"Men","courseRating":72.5,"slopeRating":123.0,"holes":[{"hole":1,"par":4,"stroke":6,"distance":390},{"hole":2,"par":4,"stroke":3,"distance":464},{"hole":3,"par":4,"stroke":8,"distance":379},{"hole":4,"par":4,"stroke":11,"distance":380},{"hole":5,"par":3,"stroke":15,"distance":141},{"hole":6,"par":5,"stroke":18,"distance":458},{"hole":7,"par":3,"stroke":16,"distance":173},{"hole":8,"par":5,"stroke":7,"distance":498},{"hole":9,"par":4,"stroke":1,"distance":394},{"hole":10,"par":4,"stroke":10,"distance":389},{"hole":11,"par":5,"stroke":14,"distance":475},{"hole":12,"par":3,"stroke":9,"distance":194},{"hole":13,"par":4,"stroke":4,"distance":393},{"hole":14,"par":4,"stroke":2,"distance":411},{"hole":15,"par":3,"stroke":13,"distance":159},{"hole":16,"par":5,"stroke":17,"distance":462},{"hole":17,"par":4,"stroke":12,"distance":376},{"hole":18,"par":4,"stroke":5,"distance":370}]}]},{"name":"Bryanston Country Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"CMR Golf Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Country Club Johannesburg","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Dainfern Country Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Eagle Canyon Country Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Emfuleni Country Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Eye of Africa Golf Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Glenvista Country Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Goldfields West Golf Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Heidelberg Golf Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Houghton Golf Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Huddle Park Golf Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Jackal Creek Golf Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Killarney Country Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Krugersdorp Golf Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Kyalami Country Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Meyerton Golf Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Modderfontein Golf Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Observatory Golf Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Parkview Golf Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Randpark Golf Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Riviera on Vaal Country Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Ruimsig Country Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Southdowns Country Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Soweto Country Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Sun Valley Golf Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Steyn City Golf Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"River Club Johannesburg","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Wanderers Golf Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Waterpan Golf Club","union":"Central Gauteng","city":"","teeSets":[]},{"name":"Akasia Country Club","union":"Gauteng North","city":"","teeSets":[]},{"name":"Blair Atholl Golf Club","union":"Gauteng North","city":"","teeSets":[]},{"name":"Blue Valley Golf Club","union":"Gauteng North","city":"","teeSets":[]},{"name":"Bronkhorstspruit Golf Club","union":"Gauteng North","city":"","teeSets":[]},{"name":"Centurion Country Club","union":"Gauteng North","city":"","teeSets":[]},{"name":"Cullinan Golf Club","union":"Gauteng North","city":"","teeSets":[]},{"name":"Irene Country Club","union":"Gauteng North","city":"","teeSets":[]},{"name":"Pebble Rock Golf Club","union":"Gauteng North","city":"","teeSets":[]},{"name":"Pretoria Country Club","union":"Gauteng North","city":"","teeSets":[]},{"name":"Sandonia Golf Club","union":"Gauteng North","city":"","teeSets":[]},{"name":"Services Golf Club","union":"Gauteng North","city":"","teeSets":[]},{"name":"Silver Lakes Golf Club","union":"Gauteng North","city":"","teeSets":[]},{"name":"Copperleaf Golf Club","union":"Gauteng North","city":"","teeSets":[]},{"name":"Waterkloof Golf Club","union":"Gauteng North","city":"","teeSets":[]},{"name":"Wingate Park Country Club","union":"Gauteng North","city":"","teeSets":[]},{"name":"Woodhill Country Club","union":"Gauteng North","city":"","teeSets":[]},{"name":"Zwartkop Country Club","union":"Gauteng North","city":"","teeSets":[]},{"name":"Avion Park Golf Club","union":"Ekurhuleni","city":"","teeSets":[]},{"name":"Benoni Country Club","union":"Ekurhuleni","city":"","teeSets":[]},{"name":"Daveyton Golf Club","union":"Ekurhuleni","city":"","teeSets":[]},{"name":"Ebotse Golf Club","union":"Ekurhuleni","city":"","teeSets":[]},{"name":"ERPM Golf Club","union":"Ekurhuleni","city":"","teeSets":[]},{"name":"Germiston Golf Club","union":"Ekurhuleni","city":"","teeSets":[]},{"name":"Glendower Golf Club","union":"Ekurhuleni","city":"","teeSets":[]},{"name":"Kempton Park Country Club","union":"Ekurhuleni","city":"","teeSets":[]},{"name":"Lake Club Benoni","union":"Ekurhuleni","city":"","teeSets":[]},{"name":"Nigel Golf Club","union":"Ekurhuleni","city":"","teeSets":[]},{"name":"Pollak Park Golf Club","union":"Ekurhuleni","city":"","teeSets":[]},{"name":"Reading Country Club","union":"Ekurhuleni","city":"","teeSets":[]},{"name":"Royal Oak Country Club","union":"Ekurhuleni","city":"","teeSets":[]},{"name":"SAPS Training Centre Golf Club","union":"Ekurhuleni","city":"","teeSets":[]},{"name":"Serengeti Golf Club","union":"Ekurhuleni","city":"","teeSets":[]},{"name":"Springs Golf Club","union":"Ekurhuleni","city":"","teeSets":[]},{"name":"State Mines Country Club","union":"Ekurhuleni","city":"","teeSets":[]}];
+
+// ---- Course Library storage, migration, and lookup helpers ----
 
 function loadCourses(){
   try{
     const raw = localStorage.getItem(COURSES_KEY);
     courseLibrary = raw ? JSON.parse(raw) : [];
   }catch(e){ courseLibrary = []; }
+
+  // Migrate any single-scorecard entries saved by an earlier version of the Course Library
+  // (flat {name, holeCount, holes}) into the current multi-tee-set shape.
+  let migrated = false;
+  courseLibrary = courseLibrary.map(c => {
+    if(c.teeSets) return c;
+    migrated = true;
+    return {
+      name: c.name,
+      union: c.union || "",
+      city: c.city || "",
+      teeSets: c.holes ? [{
+        teeName: "Saved Scorecard", teeColour: "", gender: "",
+        courseRating: null, slopeRating: null,
+        holes: c.holes.map(h => ({ hole: h.hole, par: h.par, stroke: h.stroke, distance: null }))
+      }] : []
+    };
+  });
+  if(migrated) saveCourses();
+
+  // Merge in the built-in seed list exactly once, ever — so if an admin later deletes a seeded
+  // course on purpose, it won't silently come back on the next app load.
+  if(!localStorage.getItem(COURSES_SEEDED_KEY)){
+    seedCoursesIfMissing(SEED_COURSES_GAUTENG);
+    localStorage.setItem(COURSES_SEEDED_KEY, "1");
+  }
 }
 function saveCourses(){
   localStorage.setItem(COURSES_KEY, JSON.stringify(courseLibrary));
 }
 
-// A course can have a separate saved scorecard per hole count (an 18-hole course's Stroke Index
-// assignment isn't just "front half" of the same numbers as a 9-hole one).
-function findCourseEntry(name, holeCount){
-  const key = (name || "").trim().toLowerCase();
-  if(!key) return null;
-  return courseLibrary.find(c => c.name.trim().toLowerCase() === key && Number(c.holeCount) === Number(holeCount)) || null;
+// Adds seed courses that aren't already present (by name) — never overwrites an existing entry,
+// so it's safe to call without clobbering anything an admin has already set up or deliberately
+// removed.
+function seedCoursesIfMissing(seedCourses){
+  let added = 0;
+  seedCourses.forEach(nc => {
+    const key = nc.name.trim().toLowerCase();
+    if(!courseLibrary.some(c => c.name.trim().toLowerCase() === key)){
+      courseLibrary.push(nc);
+      added++;
+    }
+  });
+  if(added > 0) saveCourses();
+  return added;
 }
 
-function upsertCourseEntry(name, holeCount, holesSource){
-  const key = name.trim().toLowerCase();
-  const record = {
-    name: name.trim(),
-    holeCount: Number(holeCount),
-    holes: holesSource.slice(0, Number(holeCount)).map(h => ({ hole: h.hole, par: Number(h.par), stroke: Number(h.stroke) }))
-  };
-  const idx = courseLibrary.findIndex(c => c.name.trim().toLowerCase() === key && Number(c.holeCount) === Number(holeCount));
-  if(idx >= 0) courseLibrary[idx] = record; else courseLibrary.push(record);
+// Explicit admin CSV import: adds new courses and REPLACES any existing course of the same name
+// (a deliberate re-import is expected to supersede whatever was there, e.g. a name-only stub).
+function importCourses(newCourses){
+  let added = 0, updated = 0;
+  newCourses.forEach(nc => {
+    const key = nc.name.trim().toLowerCase();
+    const idx = courseLibrary.findIndex(c => c.name.trim().toLowerCase() === key);
+    if(idx >= 0){ courseLibrary[idx] = nc; updated++; }
+    else { courseLibrary.push(nc); added++; }
+  });
   saveCourses();
-  return record;
+  return { added, updated };
 }
+
+function findCourse(name){
+  const key = (name || "").trim().toLowerCase();
+  if(!key) return null;
+  return courseLibrary.find(c => c.name.trim().toLowerCase() === key) || null;
+}
+
+// Picks the tee-set that best matches the currently selected Tee Marker + Gender, falling back
+// sensibly (tee name only, then gender only, then just the first tee-set) rather than finding
+// nothing just because of a small mismatch.
+function pickBestTeeSet(course, teeName, gender){
+  if(!course || !course.teeSets || course.teeSets.length === 0) return null;
+  const norm = s => (s || "").trim().toLowerCase();
+  let match = course.teeSets.find(t => norm(t.teeName) === norm(teeName) && norm(t.gender) === norm(gender));
+  if(match) return match;
+  match = course.teeSets.find(t => norm(t.teeName) === norm(teeName));
+  if(match) return match;
+  match = course.teeSets.find(t => norm(t.gender) === norm(gender));
+  if(match) return match;
+  return course.teeSets[0];
+}
+
+// ---- CSV import (Admin) ----
+// Minimal RFC4180-ish CSV parser: handles quoted fields, embedded commas/newlines inside quotes,
+// and doubled "" escaped quotes — safer than a plain split(",") for source_url/notes columns that
+// may contain commas in future provincial files.
+function parseCsvRows(text){
+  const rows = [];
+  let row = [], field = "", inQuotes = false;
+  for(let i = 0; i < text.length; i++){
+    const c = text[i];
+    if(inQuotes){
+      if(c === '"'){
+        if(text[i+1] === '"'){ field += '"'; i++; }
+        else inQuotes = false;
+      } else field += c;
+    } else {
+      if(c === '"') inQuotes = true;
+      else if(c === ','){ row.push(field); field = ""; }
+      else if(c === '\n'){ row.push(field); rows.push(row); row = []; field = ""; }
+      else if(c === '\r'){ /* ignore; \n follows in CRLF */ }
+      else field += c;
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(cell => cell.trim() !== ""));
+}
+
+// Groups parsed CSV rows into courses -> tee-sets -> holes, matching the schema documented under
+// the file picker (club_name, course_layout, union, city, tee_name, tee_colour, player_category,
+// hole, par, stroke_index, distance_metres, course_rating, slope_rating, scorecard_status).
+// A club appears once per distinct course_layout it has, and its display name only gets a
+// " — Layout" suffix when that club has more than one layout in this file (avoids a redundant
+// "Pretoria Golf Club — Pretoria" for single-course clubs).
+function csvRowsToCourses(rows){
+  if(rows.length === 0) return { courses: [], extractedRowCount: 0 };
+  const header = rows[0].map(h => h.trim().toLowerCase());
+  const idx = {};
+  header.forEach((h,i) => { idx[h] = i; });
+  const required = ["club_name","tee_name","tee_colour","player_category","hole","par","stroke_index","scorecard_status"];
+  const missing = required.filter(k => !(k in idx));
+  if(missing.length) throw new Error(`CSV is missing expected column(s): ${missing.join(", ")}`);
+
+  const dataRows = rows.slice(1).filter(r => r.some(c => c.trim() !== ""));
+  const get = (r, key) => (idx[key] !== undefined ? (r[idx[key]] || "") : "");
+
+  const layoutsByClub = {};
+  dataRows.forEach(r => {
+    const club = get(r, "club_name").trim();
+    const layout = get(r, "course_layout").trim();
+    if(!club) return;
+    if(!layoutsByClub[club]) layoutsByClub[club] = new Set();
+    if(layout) layoutsByClub[club].add(layout);
+  });
+
+  function courseName(club, layout){
+    club = club.trim(); layout = (layout || "").trim();
+    if(layoutsByClub[club] && layoutsByClub[club].size > 1 && layout) return `${club} — ${layout}`;
+    return club;
+  }
+
+  const courses = new Map();
+  let extractedRowCount = 0;
+
+  dataRows.forEach(r => {
+    const club = get(r, "club_name").trim();
+    if(!club) return;
+    const layout = get(r, "course_layout").trim();
+    const name = courseName(club, layout);
+    const status = get(r, "scorecard_status").trim();
+
+    if(!courses.has(name)){
+      courses.set(name, { name, union: get(r,"union").trim(), city: get(r,"city").trim(), teeSets: new Map() });
+    }
+    if(status !== "Extracted") return;
+
+    const teeName = get(r, "tee_name").trim();
+    const teeColour = get(r, "tee_colour").trim();
+    const gender = get(r, "player_category").trim();
+    const holeNum = Number(get(r, "hole"));
+    const par = Number(get(r, "par"));
+    const stroke = Number(get(r, "stroke_index"));
+    if(!holeNum || !par || !stroke) return; // skip malformed rows rather than corrupting the scorecard
+
+    const distRaw = get(r, "distance_metres");
+    const crRaw = get(r, "course_rating");
+    const srRaw = get(r, "slope_rating");
+    const dist = distRaw !== "" ? Number(distRaw) : NaN;
+    const cr = crRaw !== "" ? Number(crRaw) : NaN;
+    const sr = srRaw !== "" ? Number(srRaw) : NaN;
+
+    const teeKey = `${teeName}|${teeColour}|${gender}`;
+    const teeSets = courses.get(name).teeSets;
+    if(!teeSets.has(teeKey)){
+      teeSets.set(teeKey, {
+        teeName, teeColour, gender,
+        courseRating: isNaN(cr) ? null : cr,
+        slopeRating: isNaN(sr) ? null : sr,
+        holes: []
+      });
+    }
+    teeSets.get(teeKey).holes.push({ hole: holeNum, par, stroke, distance: isNaN(dist) ? null : dist });
+    extractedRowCount++;
+  });
+
+  const out = [];
+  courses.forEach(c => {
+    const teeSetList = [];
+    c.teeSets.forEach(ts => { ts.holes.sort((a,b) => a.hole - b.hole); teeSetList.push(ts); });
+    out.push({ name: c.name, union: c.union, city: c.city, teeSets: teeSetList });
+  });
+  return { courses: out, extractedRowCount };
+}
+
 
 let profiles = [];
 
@@ -840,7 +1030,12 @@ function getAllCourseSuggestions(){
   const combined = [];
   courseLibrary.forEach(c => {
     const key = c.name.trim().toLowerCase();
-    if(!seen.has(key)){ seen.add(key); combined.push({name:c.name, region:`Saved scorecard — ${c.holeCount} holes`}); }
+    if(seen.has(key)) return;
+    seen.add(key);
+    const region = (c.teeSets && c.teeSets.length)
+      ? `Saved scorecard — ${c.teeSets.length} tee-set${c.teeSets.length > 1 ? "s" : ""}`
+      : (c.union || c.city || "Course Library");
+    combined.push({name:c.name, region});
   });
   TOP100_COURSES.forEach(c => {
     const key = c.name.trim().toLowerCase();
@@ -878,7 +1073,7 @@ function setupCourseAutocomplete(){
       input.value = item.dataset.name;
       list.classList.remove("show");
       list.innerHTML = "";
-      maybeAutoFillOnCourseOrHoleCountChange(); // picking a saved course should offer its scorecard right away
+      onRoundCourseSelected(); // picking a saved course should offer its scorecard right away
     }
   });
 
@@ -907,10 +1102,10 @@ function parOptionsHtml(selected){
   return [3,4,5].map(n=>`<option value="${n}" ${Number(selected)===n?"selected":""}>${n}</option>`).join("");
 }
 
-// Copies a saved Course Library scorecard's Par/Stroke Index onto a live holes[] array,
+// Copies a saved Course Library tee-set's Par/Stroke Index onto a live holes[] array,
 // hole-by-hole, leaving Score/Putts/Fairway/Green/etc exactly as they are.
-function applyScorecardToHoles(targetHoles, courseEntry){
-  courseEntry.holes.forEach((ch, i) => {
+function applyScorecardToHoles(targetHoles, teeSet){
+  teeSet.holes.forEach((ch, i) => {
     if(targetHoles[i]){
       targetHoles[i].par = Number(ch.par);
       targetHoles[i].stroke = Number(ch.stroke);
@@ -918,37 +1113,112 @@ function applyScorecardToHoles(targetHoles, courseEntry){
   });
 }
 
-// Looks up the current Course + Holes selection in the Course Library and, if found, loads its
-// Par/Stroke Index into the live scorecard. Called silently (no alerts) whenever the course or
-// hole count changes, and explicitly (with feedback) from the "Load Saved Scorecard" button —
-// but it will never silently overwrite scores the player has already started entering.
+// Default Tee Marker colour list, used whenever the selected course isn't in the Course Library
+// (or has no saved scorecard yet) — keeps the original quick-pick behaviour for everyday use.
+const DEFAULT_TEE_OPTIONS = ["Yellow", "White", "Blue", "Red"];
+
+function restoreDefaultTeeOptions(){
+  const select = document.getElementById("teeMarker");
+  if(!select) return;
+  const current = select.value;
+  select.innerHTML = DEFAULT_TEE_OPTIONS.map(t => `<option value="${t}">${t}</option>`).join("");
+  if(DEFAULT_TEE_OPTIONS.includes(current)) select.value = current;
+}
+
+// Real scorecards often name tees by category ("Championship", "Club", "Executive", "Ladies")
+// rather than colour, so once a course with its own tee-sets is selected, offer exactly those
+// tee names instead of the generic Yellow/White/Blue/Red list.
+function updateTeeMarkerOptionsForCourse(course){
+  const select = document.getElementById("teeMarker");
+  if(!select) return;
+  if(!course || !course.teeSets || course.teeSets.length === 0){
+    restoreDefaultTeeOptions();
+    return;
+  }
+  const seen = new Set();
+  const opts = [];
+  course.teeSets.forEach(t => {
+    const value = t.teeName || t.teeColour;
+    const key = (value || "").trim().toLowerCase();
+    if(!key || seen.has(key)) return;
+    seen.add(key);
+    const label = (t.teeColour && t.teeColour !== t.teeName) ? `${t.teeName} (${t.teeColour})` : value;
+    opts.push({value, label});
+  });
+  if(opts.length === 0){ restoreDefaultTeeOptions(); return; }
+
+  const gender = document.getElementById("playerGender").value;
+  const preferred = pickBestTeeSet(course, select.value, gender);
+  select.innerHTML = opts.map(o => `<option value="${o.value}">${o.label}</option>`).join("");
+  if(preferred){
+    const preferredValue = preferred.teeName || preferred.teeColour;
+    if(opts.some(o => o.value === preferredValue)) select.value = preferredValue;
+  }
+}
+
+// Small read-only line under the Course field showing which tee-set is loaded, plus its Course
+// Rating / Slope Rating when the CSV/manual data included them — reference info only, doesn't
+// feed into any calculation.
+function updateCourseRatingNote(course, teeSet){
+  const el = document.getElementById("courseRatingNote");
+  if(!el) return;
+  if(!course || !teeSet){ el.textContent = ""; return; }
+  const bits = [];
+  const teeLabel = (teeSet.teeColour && teeSet.teeColour !== teeSet.teeName) ? `${teeSet.teeName} (${teeSet.teeColour})` : (teeSet.teeName || teeSet.teeColour);
+  if(teeLabel) bits.push(teeLabel);
+  if(teeSet.courseRating) bits.push(`CR ${teeSet.courseRating}`);
+  if(teeSet.slopeRating) bits.push(`Slope ${teeSet.slopeRating}`);
+  el.textContent = bits.length ? `📋 ${bits.join(" · ")} scorecard loaded` : "";
+}
+
+// Looks up the current Course + Tee Marker + Gender selection in the Course Library and, if
+// found, loads that tee-set's Par/Stroke Index into the live scorecard. Called silently (no
+// alerts) whenever the course, tee, or gender changes, and explicitly (with feedback) from the
+// "Load Saved Scorecard" button — but it will never silently overwrite scores already entered.
 function tryAutoFillCourseScorecard(opts){
   const silent = !!(opts && opts.silent);
   const name = document.getElementById("roundCourse").value;
-  const holeCount = Number(document.getElementById("holeCount").value);
-  const entry = findCourseEntry(name, holeCount);
+  const teeName = document.getElementById("teeMarker").value;
+  const gender = document.getElementById("playerGender").value;
+
+  const course = findCourse(name);
+  const teeSet = course ? pickBestTeeSet(course, teeName, gender) : null;
   const hasAnyScore = holes.some(h => h.score !== "");
 
-  if(!entry){
+  if(!teeSet){
+    updateCourseRatingNote(null, null);
     if(!silent){
-      alert(`No saved scorecard yet for "${name || "this course"}" at ${holeCount} holes. Set Par and Stroke Index below to match the real scorecard, then tap "Remember This Scorecard" so it auto-fills next time.`);
+      alert(`No saved scorecard yet for "${name || "this course"}". Set Par and Stroke Index below to match the real scorecard, then tap "Remember This Scorecard" so it auto-fills next time.`);
     }
     return false;
   }
 
   if(hasAnyScore){
     if(silent) return false; // never clobber live data without asking
-    if(!confirm(`Load the saved scorecard for "${entry.name}"? This replaces the Par and Stroke Index below (your scores and putts already entered are kept).`)) return false;
+    const teeLabel = teeSet.teeName || teeSet.teeColour;
+    if(!confirm(`Load the "${teeLabel}" scorecard for "${course.name}"? This replaces the Par and Stroke Index below (your scores and putts already entered are kept).`)) return false;
   }
 
-  applyScorecardToHoles(holes, entry);
+  applyScorecardToHoles(holes, teeSet);
   renderHoleTable();
   updateTotalsAndSummary();
-  if(!silent) alert(`Loaded the saved scorecard for "${entry.name}".`);
+  updateCourseRatingNote(course, teeSet);
+  if(!silent){
+    const teeLabel = teeSet.teeName || teeSet.teeColour;
+    alert(`Loaded the "${teeLabel}" scorecard for "${course.name}".`);
+  }
   return true;
 }
 
 function maybeAutoFillOnCourseOrHoleCountChange(){
+  tryAutoFillCourseScorecard({silent:true});
+}
+
+// Course changed (typed or picked from suggestions): refresh the Tee Marker options to match
+// this course's own tee-sets (or fall back to the default colour list), then try to auto-fill.
+function onRoundCourseSelected(){
+  const name = document.getElementById("roundCourse").value;
+  updateTeeMarkerOptionsForCourse(findCourse(name));
   tryAutoFillCourseScorecard({silent:true});
 }
 
@@ -1001,31 +1271,63 @@ function onLibFieldChange(e){
 
 // Rebuilds the "Saved Courses" dropdown from courseLibrary; optionally re-selects a given
 // course/holeCount pair (used right after saving, so the form stays pointed at what was saved).
-function populateLibCourseSelect(selectName, selectHoleCount){
+function populateLibCourseSelect(selectName){
   const select = document.getElementById("libCourseSelect");
   if(!select) return;
   const options = ['<option value="">+ New Course</option>'];
   courseLibrary.forEach((c, i) => {
-    options.push(`<option value="${i}">${c.name} (${c.holeCount} holes)</option>`);
+    const info = (c.teeSets && c.teeSets.length)
+      ? ` — ${c.teeSets.length} tee-set${c.teeSets.length > 1 ? "s" : ""}`
+      : " — no scorecard yet";
+    options.push(`<option value="${i}">${c.name}${info}</option>`);
   });
   select.innerHTML = options.join("");
   if(selectName){
-    const idx = courseLibrary.findIndex(c => c.name === selectName && Number(c.holeCount) === Number(selectHoleCount));
+    const idx = courseLibrary.findIndex(c => c.name === selectName);
     if(idx >= 0) select.value = String(idx);
   }
 }
 
+// Loads a saved course into the manual editor. Courses with a single tee-set (whether hand-added
+// or a one-tee CSV import) are fully editable. Courses with several tee-sets (typically bulk CSV
+// imports) are shown read-only — editing here would collapse all of them down to one, so those
+// can only be viewed or deleted; re-import the CSV to update them instead.
 function loadLibCourseIntoForm(idx){
   const c = courseLibrary[idx];
   if(!c) return;
   document.getElementById("libCourseName").value = c.name;
-  document.getElementById("libHoleCount").value = String(c.holeCount);
-  libHoles = c.holes.map(h => ({...h}));
+  const note = document.getElementById("libMultiTeeNote");
+  const saveBtn = document.getElementById("saveCourseBtn");
+
+  if(!c.teeSets || c.teeSets.length === 0){
+    note.style.display = "none";
+    saveBtn.disabled = false;
+    const holeCount = Number(document.getElementById("libHoleCount").value) || 18;
+    buildLibHoles(holeCount);
+    renderLibScorecardTable();
+    return;
+  }
+
+  if(c.teeSets.length > 1){
+    const teeList = c.teeSets.map(t => `${t.teeName || t.teeColour}${t.gender ? " ("+t.gender+")" : ""}`).join(", ");
+    note.textContent = `This course has ${c.teeSets.length} tee-sets imported from CSV (${teeList}). Showing the first one for reference — Save is disabled here to avoid collapsing them into one. Delete and re-import the CSV to update it.`;
+    note.style.display = "block";
+    saveBtn.disabled = true;
+  } else {
+    note.style.display = "none";
+    saveBtn.disabled = false;
+  }
+
+  const ts = c.teeSets[0];
+  document.getElementById("libHoleCount").value = String(ts.holes.length > 9 ? 18 : 9);
+  libHoles = ts.holes.map(h => ({...h}));
   renderLibScorecardTable();
 }
 
 function resetLibForm(){
   document.getElementById("libCourseName").value = "";
+  document.getElementById("libMultiTeeNote").style.display = "none";
+  document.getElementById("saveCourseBtn").disabled = false;
   const holeCount = Number(document.getElementById("libHoleCount").value) || 18;
   buildLibHoles(holeCount);
   renderLibScorecardTable();
@@ -1844,14 +2146,19 @@ document.getElementById("holeCount").addEventListener("change", (e)=>{
   renderHoleTable();
   roundDirty = false; // fresh blank scorecard — nothing to lose yet
   updateUnsavedBanner();
-  maybeAutoFillOnCourseOrHoleCountChange(); // new hole count may match a different saved scorecard
+  maybeAutoFillOnCourseOrHoleCountChange(); // new hole count may still match the current tee-set
 });
 
 // Date/Course are part of the saved round record too, so changing them also counts as
 // "unsaved work" for the reminder banner.
 document.getElementById("roundDate").addEventListener("input", markRoundDirty);
 document.getElementById("roundCourse").addEventListener("input", markRoundDirty);
-document.getElementById("roundCourse").addEventListener("change", maybeAutoFillOnCourseOrHoleCountChange);
+document.getElementById("roundCourse").addEventListener("change", onRoundCourseSelected);
+
+// Changing Gender or Tee Marker picks a different tee-set for the SAME course (e.g. switching
+// from Men's Championship to Ladies), so re-run the auto-fill lookup on either change.
+document.getElementById("teeMarker").addEventListener("change", maybeAutoFillOnCourseOrHoleCountChange);
+document.getElementById("playerGender").addEventListener("change", maybeAutoFillOnCourseOrHoleCountChange);
 
 document.getElementById("loadScorecardBtn").addEventListener("click", ()=>{
   tryAutoFillCourseScorecard({silent:false});
@@ -1861,9 +2168,24 @@ document.getElementById("saveScorecardBtn").addEventListener("click", ()=>{
   const name = document.getElementById("roundCourse").value.trim();
   if(!name){ alert("Enter a course name before saving its scorecard."); return; }
   const holeCount = Number(document.getElementById("holeCount").value);
-  upsertCourseEntry(name, holeCount, holes);
+  const teeName = document.getElementById("teeMarker").value;
+  const gender = document.getElementById("playerGender").value;
+  const teeSet = {
+    teeName: teeName || "Saved Scorecard", teeColour: "", gender: gender || "",
+    courseRating: null, slopeRating: null,
+    holes: holes.slice(0, holeCount).map(h => ({ hole: h.hole, par: Number(h.par), stroke: Number(h.stroke), distance: null }))
+  };
+  const existing = findCourse(name);
+  if(existing){
+    const key = name.trim().toLowerCase();
+    const otherIdx = existing.teeSets.findIndex(t => (t.teeName||"").trim().toLowerCase() === (teeSet.teeName||"").trim().toLowerCase() && (t.gender||"") === (teeSet.gender||""));
+    if(otherIdx >= 0) existing.teeSets[otherIdx] = teeSet; else existing.teeSets.push(teeSet);
+  } else {
+    courseLibrary.push({ name, union:"", city:"", teeSets:[teeSet] });
+  }
+  saveCourses();
   populateLibCourseSelect();
-  alert(`Saved the Par / Stroke Index scorecard for "${name}" (${holeCount} holes). It'll auto-fill next time this course is played.`);
+  alert(`Saved the "${teeSet.teeName}" Par / Stroke Index scorecard for "${name}" (${holeCount} holes). It'll auto-fill next time this course is played with the same Gender/Tee Marker.`);
 });
 
 // Best-effort reminder for regular browser tabs — iOS PWAs in standalone mode don't reliably
@@ -2050,8 +2372,27 @@ document.getElementById("saveCourseBtn").addEventListener("click", ()=>{
   const name = document.getElementById("libCourseName").value.trim();
   if(!name){ alert("Enter a course name before saving."); return; }
   const holeCount = Number(document.getElementById("libHoleCount").value);
-  upsertCourseEntry(name, holeCount, libHoles);
-  populateLibCourseSelect(name, holeCount);
+
+  // Multi-tee-set courses (from a CSV import) are view/delete-only in this editor to avoid
+  // accidentally collapsing several real tee-sets down into a single generic one.
+  const existing = findCourse(name);
+  if(existing && existing.teeSets && existing.teeSets.length > 1){
+    alert(`"${name}" has ${existing.teeSets.length} imported tee-sets and can't be edited here. Delete it first if you want to replace it with a single manually-entered scorecard.`);
+    return;
+  }
+
+  const teeSet = {
+    teeName: "Default", teeColour: "", gender: "",
+    courseRating: null, slopeRating: null,
+    holes: libHoles.slice(0, holeCount).map(h => ({ hole: h.hole, par: Number(h.par), stroke: Number(h.stroke), distance: null }))
+  };
+  if(existing){
+    existing.teeSets = [teeSet];
+  } else {
+    courseLibrary.push({ name, union:"", city:"", teeSets:[teeSet] });
+  }
+  saveCourses();
+  populateLibCourseSelect(name);
   alert(`Saved "${name}" (${holeCount} holes) to the Course Library. It now appears in Round Entry's course suggestions and will auto-fill its scorecard.`);
 });
 
@@ -2060,11 +2401,38 @@ document.getElementById("deleteCourseBtn").addEventListener("click", ()=>{
   if(idx === ""){ alert("Select a saved course to delete first."); return; }
   const c = courseLibrary[Number(idx)];
   if(!c) return;
-  if(!confirm(`Delete the saved scorecard for "${c.name}" (${c.holeCount} holes)? This does not affect any rounds already saved to history.`)) return;
+  const teeCount = c.teeSets ? c.teeSets.length : 0;
+  if(!confirm(`Delete "${c.name}" (${teeCount} tee-set${teeCount === 1 ? "" : "s"})? This does not affect any rounds already saved to history.`)) return;
   courseLibrary.splice(Number(idx), 1);
   saveCourses();
   resetLibForm();
   populateLibCourseSelect();
+});
+
+document.getElementById("csvImportFile").addEventListener("change", (e)=>{
+  const file = e.target.files && e.target.files[0];
+  const status = document.getElementById("csvImportStatus");
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try{
+      const rows = parseCsvRows(ev.target.result);
+      const { courses, extractedRowCount } = csvRowsToCourses(rows);
+      if(courses.length === 0){
+        status.textContent = `No usable scorecard rows found in "${file.name}" (looked for rows with scorecard_status = Extracted).`;
+        return;
+      }
+      const { added, updated } = importCourses(courses);
+      populateLibCourseSelect();
+      status.textContent = `Imported "${file.name}": ${added} new course(s), ${updated} updated, from ${extractedRowCount} scorecard row(s). They now appear in Round Entry's course suggestions.`;
+    }catch(err){
+      status.textContent = `Could not import "${file.name}": ${err.message}`;
+    }finally{
+      e.target.value = "";
+    }
+  };
+  reader.onerror = () => { status.textContent = `Could not read "${file.name}".`; e.target.value = ""; };
+  reader.readAsText(file);
 });
 
 // init
