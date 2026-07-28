@@ -1128,11 +1128,11 @@ function renderTrendCharts(){
       responsive:true, maintainAspectRatio:false,
       plugins:{legend:{position:"bottom"}},
       scales:{
-        // beginAtZero on both axes matters most with only 1-2 saved rounds: without it, Chart.js
-        // centers a lone data point at the vertical midpoint of its own auto-ranged axis, which
-        // made the Score and Putts markers land on the exact same pixel and hide one another.
-        y:{position:"left", title:{display:true,text:"Score"}, grid:{color:CHART_COLORS.grid}, beginAtZero:true},
-        y1:{position:"right", title:{display:true,text:"Putts"}, grid:{display:false}, beginAtZero:true}
+        // Fixed floors (rather than beginAtZero) keep both axes readable at realistic golf scales,
+        // and also keep the Score and Putts markers from landing on the exact same pixel when
+        // there are only 1-2 saved rounds.
+        y:{position:"left", title:{display:true,text:"Score"}, grid:{color:CHART_COLORS.grid}, min:35},
+        y1:{position:"right", title:{display:true,text:"Putts"}, grid:{display:false}, min:18}
       }
     }
   });
