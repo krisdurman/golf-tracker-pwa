@@ -353,7 +353,7 @@
 
     <div class="card">
       <div class="flex-between">
-        <h2 style="border:none;margin:0;">Round History</h2>
+        <h2 style="border:none;margin:0;">Round History <span id="historyPlayerLabel" style="font-size:0.75rem;font-weight:500;color:var(--muted);"></span></h2>
         <div>
           <button class="btn secondary" id="exportCsvBtn">Export CSV</button>
           <button class="btn danger" id="clearHistoryBtn">Clear History</button>
@@ -1124,9 +1124,26 @@ function cumulativeSum(arr){
   return arr.map(v => (running += num(v)));
 }
 
-function renderTrendCharts(){
-  const labels = history.map((r,i)=> r.date ? r.date.slice(5) : `R${i+1}`);
-  const hasData = history.length > 0;
+// The player currently active in the Player Profile card — every history-derived view
+// (Round History, Career Totals, all 4 trend charts, CSV export) is scoped to this name only,
+// so one player never sees another player's saved rounds mixed into their stats.
+function getActivePlayerName(){
+  return (document.getElementById("playerName").value || "").trim();
+}
+
+// Returns {idx, r} pairs — idx is the ORIGINAL index into the full history[] array (needed so
+// View/Delete/Edit still operate on the right saved round), r is the round itself — filtered to
+// only the rounds belonging to the currently active player name (case-insensitive).
+function getVisibleHistory(){
+  const active = getActivePlayerName().toLowerCase();
+  return history
+    .map((r, idx) => ({ r, idx }))
+    .filter(({r}) => (r.playerName || "").trim().toLowerCase() === active);
+}
+
+function renderTrendCharts(rounds){
+  const labels = rounds.map((r,i)=> r.date ? r.date.slice(5) : `R${i+1}`);
+  const hasData = rounds.length > 0;
 
   document.getElementById("trendEmpty1").style.display = hasData ? "none" : "block";
   document.getElementById("trendEmpty2").style.display = hasData ? "none" : "block";
@@ -1139,12 +1156,12 @@ function renderTrendCharts(){
       labels,
       datasets:[
         {
-          label:"Cumulative Score", data: cumulativeSum(history.map(r=>r.stats.totScore)),
+          label:"Cumulative Score", data: cumulativeSum(rounds.map(r=>r.stats.totScore)),
           borderColor: CHART_COLORS.green, backgroundColor: CHART_COLORS.green,
           yAxisID:"y", tension:0.25, pointRadius:4, pointStyle:"circle"
         },
         {
-          label:"Cumulative Putts", data: cumulativeSum(history.map(r=>r.stats.totPutts)),
+          label:"Cumulative Putts", data: cumulativeSum(rounds.map(r=>r.stats.totPutts)),
           borderColor: CHART_COLORS.blue, backgroundColor: CHART_COLORS.blue,
           yAxisID:"y1", tension:0.25, pointRadius:5, pointStyle:"rectRot"
         }
@@ -1169,9 +1186,9 @@ function renderTrendCharts(){
     data:{
       labels,
       datasets:[
-        {label:"Sub-Par", data: cumulativeSum(history.map(r=>r.stats.subPar)), backgroundColor: CHART_COLORS.greenLight, borderRadius:5},
-        {label:"Par", data: cumulativeSum(history.map(r=>r.stats.parCount)), backgroundColor: CHART_COLORS.gold, borderRadius:5},
-        {label:"Over-Par", data: cumulativeSum(history.map(r=>r.stats.overPar)), backgroundColor: CHART_COLORS.redLight, borderRadius:5}
+        {label:"Sub-Par", data: cumulativeSum(rounds.map(r=>r.stats.subPar)), backgroundColor: CHART_COLORS.greenLight, borderRadius:5},
+        {label:"Par", data: cumulativeSum(rounds.map(r=>r.stats.parCount)), backgroundColor: CHART_COLORS.gold, borderRadius:5},
+        {label:"Over-Par", data: cumulativeSum(rounds.map(r=>r.stats.overPar)), backgroundColor: CHART_COLORS.redLight, borderRadius:5}
       ]
     },
     options:{
@@ -1186,7 +1203,7 @@ function renderTrendCharts(){
 
   // Opportunity breakdown across all saved rounds (already a career-wide aggregate, not per-round)
   const oppCounts = {Putting:0, "Short Game":0, "Long Game":0};
-  history.forEach(r=>{ oppCounts[r.stats.opportunity] = (oppCounts[r.stats.opportunity]||0) + 1; });
+  rounds.forEach(r=>{ oppCounts[r.stats.opportunity] = (oppCounts[r.stats.opportunity]||0) + 1; });
   opportunityChart = destroyChart(opportunityChart);
   opportunityChart = new Chart(document.getElementById("opportunityChart"), {
     type:"doughnut",
@@ -1210,9 +1227,9 @@ function renderTrendCharts(){
     data:{
       labels,
       datasets:[
-        {label:"3+ Putts", data: cumulativeSum(history.map(r=>r.stats.threePutts)), borderColor: CHART_COLORS.blue, backgroundColor: CHART_COLORS.blue, tension:0.25},
-        {label:"2+ Shots <50", data: cumulativeSum(history.map(r=>r.stats.shortGame2plus)), borderColor: CHART_COLORS.gold, backgroundColor: CHART_COLORS.gold, tension:0.25},
-        {label:"Penalty Strokes", data: cumulativeSum(history.map(r=>r.stats.penalties)), borderColor: CHART_COLORS.red, backgroundColor: CHART_COLORS.red, tension:0.25}
+        {label:"3+ Putts", data: cumulativeSum(rounds.map(r=>r.stats.threePutts)), borderColor: CHART_COLORS.blue, backgroundColor: CHART_COLORS.blue, tension:0.25},
+        {label:"2+ Shots <50", data: cumulativeSum(rounds.map(r=>r.stats.shortGame2plus)), borderColor: CHART_COLORS.gold, backgroundColor: CHART_COLORS.gold, tension:0.25},
+        {label:"Penalty Strokes", data: cumulativeSum(rounds.map(r=>r.stats.penalties)), borderColor: CHART_COLORS.red, backgroundColor: CHART_COLORS.red, tension:0.25}
       ]
     },
     options:{
@@ -1229,20 +1246,39 @@ function renderTrendCharts(){
 function renderHistory(){
   const body = document.getElementById("historyBody");
   const emptyNote = document.getElementById("historyEmpty");
+  const label = document.getElementById("historyPlayerLabel");
   body.innerHTML = "";
-  if(history.length === 0){
+
+  const activeName = getActivePlayerName();
+  if(label) label.textContent = activeName ? `— ${activeName}` : "— no name entered";
+
+  // Everything below (table rows, trend charts, career totals) is scoped to the ACTIVE player
+  // only. visible[].idx keeps the original history[] array index so View/Delete still target
+  // the correct saved round even though we're rendering a filtered subset.
+  const visible = getVisibleHistory();
+  const rounds = visible.map(v => v.r);
+
+  if(visible.length === 0){
+    if(history.length === 0){
+      emptyNote.textContent = `No rounds saved yet. Complete a round on the left and click "Save Round to History".`;
+    } else if(activeName){
+      emptyNote.textContent = `No saved rounds for "${activeName}" yet. (${history.length} round(s) saved under other names are hidden.)`;
+    } else {
+      emptyNote.textContent = `Enter or select a player name above to see their round history. (${history.length} round(s) saved under other names are hidden.)`;
+    }
     emptyNote.style.display = "block";
-    renderTrendCharts();
-    renderCareerTotals();
+    renderTrendCharts(rounds);
+    renderCareerTotals(rounds);
     return;
   }
   emptyNote.style.display = "none";
 
-  history.slice().reverse().forEach((r, revIdx)=>{
-    const realIdx = history.length - 1 - revIdx;
+  visible.slice().reverse().forEach((entry, revPos)=>{
+    const { r, idx } = entry;
+    const displayNum = visible.length - revPos; // 1-based position within this player's own rounds
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${realIdx+1}</td>
+      <td>${displayNum}</td>
       <td>${r.date || "-"}</td>
       <td>${r.course || "-"}</td>
       <td>${r.stats.totScore}</td>
@@ -1253,8 +1289,8 @@ function renderHistory(){
       <td>${r.stats.shortGame2plus}</td>
       <td>${r.stats.penalties}</td>
       <td><span class="tag ${r.stats.opportunity==='Putting'?'putting':(r.stats.opportunity==='Short Game'?'short':'long')}">${r.stats.opportunity}</span></td>
-      <td><button class="btn secondary" style="padding:4px 8px;font-size:0.72rem;" data-view="${realIdx}">View</button></td>
-      <td><button class="btn danger" style="padding:4px 8px;font-size:0.72rem;" data-del="${realIdx}">Delete</button></td>
+      <td><button class="btn secondary" style="padding:4px 8px;font-size:0.72rem;" data-view="${idx}">View</button></td>
+      <td><button class="btn danger" style="padding:4px 8px;font-size:0.72rem;" data-del="${idx}">Delete</button></td>
     `;
     body.appendChild(tr);
   });
@@ -1274,15 +1310,15 @@ function renderHistory(){
     });
   });
 
-  renderTrendCharts();
-  renderCareerTotals();
+  renderTrendCharts(rounds);
+  renderCareerTotals(rounds);
 }
 
 // Career-wide (all saved rounds combined) totals and averages — separate from the per-round
 // Round Summary card, which only ever reflects the round currently being entered.
-function renderCareerTotals(){
+function renderCareerTotals(rounds){
   const emptyNote = document.getElementById("careerEmpty");
-  if(history.length === 0){
+  if(rounds.length === 0){
     emptyNote.style.display = "block";
     ["careerRounds","careerAvgScore","careerAvgNett","careerAvgSP","careerAvgPutts","careerTotPenalties","careerBest","careerWorst"].forEach(id=>{
       document.getElementById(id).textContent = "-";
@@ -1291,10 +1327,10 @@ function renderCareerTotals(){
   }
   emptyNote.style.display = "none";
 
-  const n = history.length;
+  const n = rounds.length;
   let totScore=0, totNett=0, totSP=0, totPutts=0, totPenalties=0;
-  let best = history[0], worst = history[0];
-  history.forEach(r=>{
+  let best = rounds[0], worst = rounds[0];
+  rounds.forEach(r=>{
     totScore += num(r.stats.totScore);
     totNett += num(r.stats.totNett);
     totSP += num(r.stats.totSP);
@@ -1467,9 +1503,11 @@ function closeHistoryDetail(){
 }
 
 function exportCsv(){
-  if(history.length === 0){ alert("No rounds to export yet."); return; }
+  // Export only the active player's own rounds — same scoping as the Round History table.
+  const rounds = getVisibleHistory().map(v => v.r);
+  if(rounds.length === 0){ alert("No rounds to export for the current player name."); return; }
   const headers = ["Round","Date","Course","Score","Putts","ParOrBetter","DoubleOrWorse","ThreePutts","TwoPlusShotsUnder50","PenaltyStrokes","BiggestOpportunity"];
-  const rows = history.map((r,i)=>[
+  const rows = rounds.map((r,i)=>[
     i+1, r.date||"", r.course||"", r.stats.totScore, r.stats.totPutts, r.stats.parBetter,
     r.stats.doubleWorse, r.stats.threePutts, r.stats.shortGame2plus, r.stats.penalties, r.stats.opportunity
   ]);
@@ -1478,7 +1516,8 @@ function exportCsv(){
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `golf-round-history-${new Date().toISOString().slice(0,10)}.csv`;
+  const namePart = (getActivePlayerName() || "unnamed").replace(/[^a-z0-9]+/gi, "-");
+  a.download = `golf-round-history-${namePart}-${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -1539,10 +1578,14 @@ document.getElementById("playerDOB").addEventListener("change", (e)=>{
 
 document.getElementById("profileSelect").addEventListener("change", (e)=>{
   const name = e.target.value;
-  if(!name){ clearProfileForm(); return; }
+  if(!name){ clearProfileForm(); renderHistory(); return; }
   const p = profiles.find(pr => pr.name === name);
   if(p) fillProfileForm(p);
+  renderHistory(); // switching player re-scopes Round History, Career Totals, and all trend charts
 });
+
+// Typing a name directly (without picking a saved profile) should re-scope history too.
+document.getElementById("playerName").addEventListener("change", renderHistory);
 
 document.getElementById("saveProfileBtn").addEventListener("click", ()=>{
   const data = readProfileForm();
@@ -1565,6 +1608,7 @@ document.getElementById("deleteProfileBtn").addEventListener("click", ()=>{
   saveProfiles();
   populateProfileSelect("");
   clearProfileForm();
+  renderHistory();
 });
 
 document.getElementById("saveRoundBtn").addEventListener("click", ()=>{
