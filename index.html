@@ -312,8 +312,8 @@
               <td id="frontPutts">-</td>
               <td></td>
               <td></td>
-              <td></td>
-              <td></td>
+              <td id="frontShortShots">-</td>
+              <td id="frontPenalties">-</td>
             </tr>
             <tr id="backRow" class="subtotal-row">
               <td>Back 9</td>
@@ -325,8 +325,8 @@
               <td id="backPutts">-</td>
               <td></td>
               <td></td>
-              <td></td>
-              <td></td>
+              <td id="backShortShots">-</td>
+              <td id="backPenalties">-</td>
             </tr>
             <tr class="grand-row">
               <td>Total</td>
@@ -336,7 +336,9 @@
               <td id="totNett">-</td>
               <td id="totSP">-</td>
               <td id="totPutts">-</td>
-              <td colspan="4"></td>
+              <td colspan="2"></td>
+              <td id="totShortShots">-</td>
+              <td id="totPenalties">-</td>
             </tr>
           </tfoot>
         </table>
@@ -518,7 +520,9 @@
             <td id="hdFrontNett">-</td>
             <td id="hdFrontSP">-</td>
             <td id="hdFrontPutts">-</td>
-            <td></td><td></td><td></td><td></td>
+            <td></td><td></td>
+            <td id="hdFrontShortShots">-</td>
+            <td id="hdFrontPenalties">-</td>
           </tr>
           <tr class="subtotal-row" id="hdBackRow">
             <td>Back 9</td>
@@ -528,7 +532,9 @@
             <td id="hdBackNett">-</td>
             <td id="hdBackSP">-</td>
             <td id="hdBackPutts">-</td>
-            <td></td><td></td><td></td><td></td>
+            <td></td><td></td>
+            <td id="hdBackShortShots">-</td>
+            <td id="hdBackPenalties">-</td>
           </tr>
           <tr class="grand-row">
             <td>Total</td>
@@ -538,7 +544,9 @@
             <td id="hdTotNett">-</td>
             <td id="hdTotSP">-</td>
             <td id="hdTotPutts">-</td>
-            <td colspan="4"></td>
+            <td colspan="2"></td>
+            <td id="hdTotShortShots">-</td>
+            <td id="hdTotPenalties">-</td>
           </tr>
         </tfoot>
       </table>
@@ -805,6 +813,12 @@ function loadHistory(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
     history = raw ? JSON.parse(raw) : [];
+    // Recompute stats for every saved round on load, so older rounds saved before a stat
+    // (e.g. Putts totals, Front/Back subtotals) existed automatically pick it up instead of
+    // showing gaps in the trend charts.
+    history.forEach(r=>{
+      if(r.holes) r.stats = computeStats(r.holes, num(r.hc));
+    });
   }catch(e){ history = []; }
 }
 function saveHistory(){
@@ -885,11 +899,13 @@ function num(v){ return (v === "" || v === null || v === undefined || isNaN(v)) 
 
 function computeStats(holeArr, hc){
   hc = num(hc);
-  let totPar=0, totScore=0, totPutts=0, parBetter=0, doubleWorse=0, threePutts=0, shortGame2plus=0, penalties=0;
+  let totPar=0, totScore=0, totPutts=0, parBetter=0, doubleWorse=0, threePutts=0, shortGame2plus=0;
   let fwHit=0, fwMiss=0, fwLeft=0, fwRight=0, fwShort=0, fwLong=0;
   let grHit=0, grMiss=0, grLeft=0, grRight=0, grShort=0, grLong=0;
   let totNett=0, totSP=0, frontNett=0, frontSP=0, backNett=0, backSP=0;
   let frontPar=0, backPar=0, frontScore=0, backScore=0, frontPutts=0, backPutts=0;
+  let totShortShots=0, frontShortShots=0, backShortShots=0;
+  let totPenalties=0, frontPenalties=0, backPenalties=0;
 
   holeArr.forEach((h, idx)=>{
     const par = num(h.par), score = num(h.score), putts = num(h.putts);
@@ -900,6 +916,11 @@ function computeStats(holeArr, hc){
     if(idx < 9){ frontPar += par; } else { backPar += par; }
     if(h.score !== ""){ if(idx < 9){ frontScore += score; } else { backScore += score; } }
     if(h.putts !== ""){ if(idx < 9){ frontPutts += putts; } else { backPutts += putts; } }
+
+    totShortShots += num(h.shortShots);
+    if(idx < 9){ frontShortShots += num(h.shortShots); } else { backShortShots += num(h.shortShots); }
+    totPenalties += num(h.penalties);
+    if(idx < 9){ frontPenalties += num(h.penalties); } else { backPenalties += num(h.penalties); }
 
     if(h.score !== ""){
       const {nett, sp} = holeNettSP(h, hc);
@@ -915,7 +936,6 @@ function computeStats(holeArr, hc){
     }
     if(h.putts !== "" && putts >= 3) threePutts++;
     if(num(h.shortShots) >= 2) shortGame2plus++;
-    penalties += num(h.penalties);
 
     if(h.fairway === "hit") fwHit++;
     else if(h.fairway !== "na" && h.fairway !== ""){
@@ -945,11 +965,14 @@ function computeStats(holeArr, hc){
   if(puttingScore > longGameScore && puttingScore > shortGameScore) opportunity = "Putting";
 
   return {
-    totPar, totScore, totPutts, parBetter, doubleWorse, threePutts, shortGame2plus, penalties,
+    totPar, totScore, totPutts, parBetter, doubleWorse, threePutts, shortGame2plus,
+    penalties: totPenalties,
     fwHit, fwMiss, fwLeft, fwRight, fwShort, fwLong,
     grHit, grMiss, grLeft, grRight, grShort, grLong,
     totNett, totSP, frontNett, frontSP, backNett, backSP,
     frontPar, backPar, frontScore, backScore, frontPutts, backPutts,
+    totShortShots, frontShortShots, backShortShots,
+    totPenalties, frontPenalties, backPenalties,
     opportunity
   };
 }
@@ -993,6 +1016,8 @@ function updateTotalsAndSummary(){
   document.getElementById("frontNett").textContent = scoredHoles.length ? stats.frontNett : "-";
   document.getElementById("frontSP").textContent = scoredHoles.length ? stats.frontSP : "-";
   document.getElementById("frontPutts").textContent = puttedHoles.length ? stats.frontPutts : "-";
+  document.getElementById("frontShortShots").textContent = stats.frontShortShots;
+  document.getElementById("frontPenalties").textContent = stats.frontPenalties;
 
   if(hasBack){
     document.getElementById("backPar").textContent = stats.backPar;
@@ -1000,9 +1025,13 @@ function updateTotalsAndSummary(){
     document.getElementById("backNett").textContent = scoredHoles.length ? stats.backNett : "-";
     document.getElementById("backSP").textContent = scoredHoles.length ? stats.backSP : "-";
     document.getElementById("backPutts").textContent = puttedHoles.length ? stats.backPutts : "-";
+    document.getElementById("backShortShots").textContent = stats.backShortShots;
+    document.getElementById("backPenalties").textContent = stats.backPenalties;
   }
   document.getElementById("totNett").textContent = scoredHoles.length ? stats.totNett : "-";
   document.getElementById("totSP").textContent = scoredHoles.length ? stats.totSP : "-";
+  document.getElementById("totShortShots").textContent = stats.totShortShots;
+  document.getElementById("totPenalties").textContent = stats.totPenalties;
 
   document.getElementById("sumScore").textContent = scoredHoles.length ? stats.totScore : "-";
   document.getElementById("sumNett").textContent = scoredHoles.length ? stats.totNett : "-";
@@ -1326,6 +1355,8 @@ function updateHistoryDetailTotals(){
   document.getElementById("hdFrontNett").textContent = stats.frontNett;
   document.getElementById("hdFrontSP").textContent = stats.frontSP;
   document.getElementById("hdFrontPutts").textContent = stats.frontPutts;
+  document.getElementById("hdFrontShortShots").textContent = stats.frontShortShots;
+  document.getElementById("hdFrontPenalties").textContent = stats.frontPenalties;
 
   if(hasBack){
     document.getElementById("hdBackPar").textContent = stats.backPar;
@@ -1333,12 +1364,16 @@ function updateHistoryDetailTotals(){
     document.getElementById("hdBackNett").textContent = stats.backNett;
     document.getElementById("hdBackSP").textContent = stats.backSP;
     document.getElementById("hdBackPutts").textContent = stats.backPutts;
+    document.getElementById("hdBackShortShots").textContent = stats.backShortShots;
+    document.getElementById("hdBackPenalties").textContent = stats.backPenalties;
   }
   document.getElementById("hdTotPar").textContent = stats.totPar;
   document.getElementById("hdTotScore").textContent = stats.totScore;
   document.getElementById("hdTotNett").textContent = stats.totNett;
   document.getElementById("hdTotSP").textContent = stats.totSP;
   document.getElementById("hdTotPutts").textContent = stats.totPutts;
+  document.getElementById("hdTotShortShots").textContent = stats.totShortShots;
+  document.getElementById("hdTotPenalties").textContent = stats.totPenalties;
 }
 
 function setHistoryDetailEditable(editing){
