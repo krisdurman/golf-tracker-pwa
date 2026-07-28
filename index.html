@@ -1115,12 +1115,12 @@ function renderTrendCharts(){
         {
           label:"Score", data: history.map(r=>r.stats.totScore),
           borderColor: CHART_COLORS.green, backgroundColor: CHART_COLORS.green,
-          yAxisID:"y", tension:0.25, pointRadius:4
+          yAxisID:"y", tension:0.25, pointRadius:4, pointStyle:"circle"
         },
         {
           label:"Putts", data: history.map(r=>r.stats.totPutts),
           borderColor: CHART_COLORS.blue, backgroundColor: CHART_COLORS.blue,
-          yAxisID:"y1", tension:0.25, pointRadius:4
+          yAxisID:"y1", tension:0.25, pointRadius:5, pointStyle:"rectRot"
         }
       ]
     },
@@ -1128,8 +1128,11 @@ function renderTrendCharts(){
       responsive:true, maintainAspectRatio:false,
       plugins:{legend:{position:"bottom"}},
       scales:{
-        y:{position:"left", title:{display:true,text:"Score"}, grid:{color:CHART_COLORS.grid}},
-        y1:{position:"right", title:{display:true,text:"Putts"}, grid:{display:false}}
+        // beginAtZero on both axes matters most with only 1-2 saved rounds: without it, Chart.js
+        // centers a lone data point at the vertical midpoint of its own auto-ranged axis, which
+        // made the Score and Putts markers land on the exact same pixel and hide one another.
+        y:{position:"left", title:{display:true,text:"Score"}, grid:{color:CHART_COLORS.grid}, beginAtZero:true},
+        y1:{position:"right", title:{display:true,text:"Putts"}, grid:{display:false}, beginAtZero:true}
       }
     }
   });
