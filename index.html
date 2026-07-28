@@ -271,6 +271,43 @@
     </div>
 
     <div class="card">
+      <h2>Course Library <span style="font-size:0.72rem;font-weight:500;color:var(--muted);">(Admin)</span></h2>
+      <p class="small-note" style="margin-top:-6px;">Add a course that isn't in the suggested list, or set up its Par &amp; Stroke Index scorecard once here so Round Entry can auto-fill it every time that course is played — no re-typing Stroke Index on the tee.</p>
+      <div class="round-meta">
+        <div class="course-field-wrap">
+          <label>Course Name</label>
+          <input type="text" id="libCourseName" placeholder="Course name" style="width:220px;" autocomplete="off">
+        </div>
+        <div>
+          <label>Holes</label>
+          <select id="libHoleCount">
+            <option value="18" selected>18</option>
+            <option value="9">9</option>
+          </select>
+        </div>
+        <div>
+          <label>Saved Courses</label>
+          <select id="libCourseSelect" style="width:220px;">
+            <option value="">+ New Course</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table id="libScorecardTable">
+          <thead>
+            <tr><th class="hole-col">Hole</th><th>Par</th><th>Stroke Index</th></tr>
+          </thead>
+          <tbody id="libScorecardBody"></tbody>
+        </table>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="saveCourseBtn" type="button">Save Course</button>
+        <button class="btn danger" id="deleteCourseBtn" type="button">Delete Course</button>
+      </div>
+      <p class="small-note">Saved courses show up in the Course suggestions below and their Par/Stroke Index load automatically once you pick that course and hole count in Round Entry.</p>
+    </div>
+
+    <div class="card">
       <h2>Round Entry</h2>
       <div class="round-meta">
         <div>
@@ -289,6 +326,11 @@
             <option value="9">9</option>
           </select>
         </div>
+      </div>
+
+      <div class="btn-row" style="margin-top:0;margin-bottom:14px;">
+        <button class="btn secondary" id="loadScorecardBtn" type="button" style="padding:5px 10px;font-size:0.75rem;">📋 Load Saved Scorecard</button>
+        <button class="btn secondary" id="saveScorecardBtn" type="button" style="padding:5px 10px;font-size:0.75rem;">💾 Remember This Scorecard</button>
       </div>
 
       <div class="table-scroll">
@@ -583,6 +625,42 @@
 <script>
 const STORAGE_KEY = "golfTrackerHistoryV1";
 const PROFILES_KEY = "golfTrackerProfilesV1";
+const COURSES_KEY = "golfTrackerCoursesV1";
+
+// Course Library: Par + Stroke Index scorecards saved once per course (and hole count), reused
+// on every future round at that course so nobody has to re-enter Stroke Index on the tee.
+let courseLibrary = [];
+
+function loadCourses(){
+  try{
+    const raw = localStorage.getItem(COURSES_KEY);
+    courseLibrary = raw ? JSON.parse(raw) : [];
+  }catch(e){ courseLibrary = []; }
+}
+function saveCourses(){
+  localStorage.setItem(COURSES_KEY, JSON.stringify(courseLibrary));
+}
+
+// A course can have a separate saved scorecard per hole count (an 18-hole course's Stroke Index
+// assignment isn't just "front half" of the same numbers as a 9-hole one).
+function findCourseEntry(name, holeCount){
+  const key = (name || "").trim().toLowerCase();
+  if(!key) return null;
+  return courseLibrary.find(c => c.name.trim().toLowerCase() === key && Number(c.holeCount) === Number(holeCount)) || null;
+}
+
+function upsertCourseEntry(name, holeCount, holesSource){
+  const key = name.trim().toLowerCase();
+  const record = {
+    name: name.trim(),
+    holeCount: Number(holeCount),
+    holes: holesSource.slice(0, Number(holeCount)).map(h => ({ hole: h.hole, par: Number(h.par), stroke: Number(h.stroke) }))
+  };
+  const idx = courseLibrary.findIndex(c => c.name.trim().toLowerCase() === key && Number(c.holeCount) === Number(holeCount));
+  if(idx >= 0) courseLibrary[idx] = record; else courseLibrary.push(record);
+  saveCourses();
+  return record;
+}
 
 let profiles = [];
 
@@ -754,6 +832,23 @@ const TOP100_COURSES = [
   {name:"Somerset West CC", region:"Somerset West - Western Cape"}
 ];
 
+// Suggestions = the built-in SA Top 100 list + any courses an Admin has added to the Course
+// Library, deduped by name (Library entries win the region label since they're more specific
+// to this club's own data).
+function getAllCourseSuggestions(){
+  const seen = new Set();
+  const combined = [];
+  courseLibrary.forEach(c => {
+    const key = c.name.trim().toLowerCase();
+    if(!seen.has(key)){ seen.add(key); combined.push({name:c.name, region:`Saved scorecard — ${c.holeCount} holes`}); }
+  });
+  TOP100_COURSES.forEach(c => {
+    const key = c.name.trim().toLowerCase();
+    if(!seen.has(key)){ seen.add(key); combined.push({name:c.name, region:c.region}); }
+  });
+  return combined;
+}
+
 function setupCourseAutocomplete(){
   const input = document.getElementById("roundCourse");
   const list = document.getElementById("courseSuggestions");
@@ -762,7 +857,7 @@ function setupCourseAutocomplete(){
   function renderMatches(query){
     const q = query.trim().toLowerCase();
     if(q.length === 0){ list.classList.remove("show"); list.innerHTML = ""; return; }
-    const matches = TOP100_COURSES.filter(c => c.name.toLowerCase().includes(q)).slice(0, 8);
+    const matches = getAllCourseSuggestions().filter(c => c.name.toLowerCase().includes(q)).slice(0, 8);
     if(matches.length === 0){ list.classList.remove("show"); list.innerHTML = ""; return; }
     list.innerHTML = matches.map(c => `
       <div class="course-suggestion-item" data-name="${c.name.replace(/"/g,"&quot;")}">
@@ -783,6 +878,7 @@ function setupCourseAutocomplete(){
       input.value = item.dataset.name;
       list.classList.remove("show");
       list.innerHTML = "";
+      maybeAutoFillOnCourseOrHoleCountChange(); // picking a saved course should offer its scorecard right away
     }
   });
 
@@ -809,6 +905,131 @@ function strokeOptionsHtml(selected){
 // Par is only ever 3, 4, or 5 on a real course.
 function parOptionsHtml(selected){
   return [3,4,5].map(n=>`<option value="${n}" ${Number(selected)===n?"selected":""}>${n}</option>`).join("");
+}
+
+// Copies a saved Course Library scorecard's Par/Stroke Index onto a live holes[] array,
+// hole-by-hole, leaving Score/Putts/Fairway/Green/etc exactly as they are.
+function applyScorecardToHoles(targetHoles, courseEntry){
+  courseEntry.holes.forEach((ch, i) => {
+    if(targetHoles[i]){
+      targetHoles[i].par = Number(ch.par);
+      targetHoles[i].stroke = Number(ch.stroke);
+    }
+  });
+}
+
+// Looks up the current Course + Holes selection in the Course Library and, if found, loads its
+// Par/Stroke Index into the live scorecard. Called silently (no alerts) whenever the course or
+// hole count changes, and explicitly (with feedback) from the "Load Saved Scorecard" button —
+// but it will never silently overwrite scores the player has already started entering.
+function tryAutoFillCourseScorecard(opts){
+  const silent = !!(opts && opts.silent);
+  const name = document.getElementById("roundCourse").value;
+  const holeCount = Number(document.getElementById("holeCount").value);
+  const entry = findCourseEntry(name, holeCount);
+  const hasAnyScore = holes.some(h => h.score !== "");
+
+  if(!entry){
+    if(!silent){
+      alert(`No saved scorecard yet for "${name || "this course"}" at ${holeCount} holes. Set Par and Stroke Index below to match the real scorecard, then tap "Remember This Scorecard" so it auto-fills next time.`);
+    }
+    return false;
+  }
+
+  if(hasAnyScore){
+    if(silent) return false; // never clobber live data without asking
+    if(!confirm(`Load the saved scorecard for "${entry.name}"? This replaces the Par and Stroke Index below (your scores and putts already entered are kept).`)) return false;
+  }
+
+  applyScorecardToHoles(holes, entry);
+  renderHoleTable();
+  updateTotalsAndSummary();
+  if(!silent) alert(`Loaded the saved scorecard for "${entry.name}".`);
+  return true;
+}
+
+function maybeAutoFillOnCourseOrHoleCountChange(){
+  tryAutoFillCourseScorecard({silent:true});
+}
+
+// ---- Course Library (Admin) card: a small standalone Par/Stroke Index scorecard editor ----
+// Deliberately separate state from the live round's `holes` — this card is for setting up or
+// correcting a course's data, not for entering a round.
+let libHoles = [];
+
+function buildLibHoles(count){
+  libHoles = [];
+  for(let i=1;i<=count;i++) libHoles.push({hole:i, par:4, stroke:i});
+}
+
+function renderLibScorecardTable(){
+  const body = document.getElementById("libScorecardBody");
+  if(!body) return;
+  body.innerHTML = libHoles.map((h, idx) => `
+    <tr>
+      <td>${h.hole}</td>
+      <td><select data-idx="${idx}" data-field="par">${parOptionsHtml(h.par)}</select></td>
+      <td><select data-idx="${idx}" data-field="stroke">${strokeOptionsHtml(h.stroke)}</select></td>
+    </tr>
+  `).join("");
+  body.querySelectorAll("select").forEach(el=>{
+    el.addEventListener("change", onLibFieldChange);
+  });
+}
+
+function onLibFieldChange(e){
+  const idx = Number(e.target.dataset.idx);
+  const field = e.target.dataset.field;
+  const val = Number(e.target.value);
+
+  if(field === "stroke"){
+    const prevVal = Number(libHoles[idx].stroke);
+    const otherIdx = libHoles.findIndex((h, i) => i !== idx && Number(h.stroke) === val);
+    libHoles[idx].stroke = val;
+    if(otherIdx !== -1){
+      // Two holes can never share a Stroke Index — instead of blocking the edit, the hole that
+      // used to hold this value takes over the one this hole just gave up. That makes any
+      // reassignment (including swaps) a single click in either direction, no dead ends.
+      libHoles[otherIdx].stroke = prevVal;
+      renderLibScorecardTable();
+    }
+    return;
+  }
+
+  libHoles[idx][field] = val;
+}
+
+// Rebuilds the "Saved Courses" dropdown from courseLibrary; optionally re-selects a given
+// course/holeCount pair (used right after saving, so the form stays pointed at what was saved).
+function populateLibCourseSelect(selectName, selectHoleCount){
+  const select = document.getElementById("libCourseSelect");
+  if(!select) return;
+  const options = ['<option value="">+ New Course</option>'];
+  courseLibrary.forEach((c, i) => {
+    options.push(`<option value="${i}">${c.name} (${c.holeCount} holes)</option>`);
+  });
+  select.innerHTML = options.join("");
+  if(selectName){
+    const idx = courseLibrary.findIndex(c => c.name === selectName && Number(c.holeCount) === Number(selectHoleCount));
+    if(idx >= 0) select.value = String(idx);
+  }
+}
+
+function loadLibCourseIntoForm(idx){
+  const c = courseLibrary[idx];
+  if(!c) return;
+  document.getElementById("libCourseName").value = c.name;
+  document.getElementById("libHoleCount").value = String(c.holeCount);
+  libHoles = c.holes.map(h => ({...h}));
+  renderLibScorecardTable();
+}
+
+function resetLibForm(){
+  document.getElementById("libCourseName").value = "";
+  const holeCount = Number(document.getElementById("libHoleCount").value) || 18;
+  buildLibHoles(holeCount);
+  renderLibScorecardTable();
+  document.getElementById("libCourseSelect").value = "";
 }
 
 function getHC(){
@@ -944,12 +1165,21 @@ function onHoleFieldChange(e){
   }
 
   if(field === "stroke"){
-    const dup = holes.some((h, i) => i !== idx && h.stroke !== "" && Number(h.stroke) === Number(val));
-    if(dup){
-      alert(`Stroke Index ${val} is already used on another hole. Each hole needs its own unique Stroke Index (1-18).`);
-      renderHoleTable(); // redraw to snap the dropdown back to the unchanged value
+    const prevVal = holes[idx].stroke;
+    const otherIdx = holes.findIndex((h, i) => i !== idx && h.stroke !== "" && Number(h.stroke) === Number(val));
+    holes[idx].stroke = val;
+    markRoundDirty();
+    if(otherIdx !== -1){
+      // Two holes can never share a Stroke Index — instead of blocking the edit, the hole that
+      // used to hold this value takes over the one this hole just gave up. That makes
+      // reassigning Stroke Index (even a straight swap between two holes) a single click each
+      // way, with no dead ends and no interrupting alert mid-round.
+      holes[otherIdx].stroke = prevVal;
+      renderHoleTable();
       return;
     }
+    updateTotalsAndSummary();
+    return;
   }
 
   holes[idx][field] = val;
@@ -1502,13 +1732,18 @@ function onHistoryDetailFieldChange(e){
   }
 
   if(field === "stroke"){
-    const dup = historyDetailHoles.some((h, i) => i !== idx && h.stroke !== "" && Number(h.stroke) === Number(val));
-    if(dup){
-      alert(`Stroke Index ${val} is already used on another hole. Each hole needs its own unique Stroke Index (1-18).`);
-      renderHistoryDetailBody(); // redraw to snap the dropdown back to the unchanged value
+    const prevVal = historyDetailHoles[idx].stroke;
+    const otherIdx = historyDetailHoles.findIndex((h, i) => i !== idx && h.stroke !== "" && Number(h.stroke) === Number(val));
+    historyDetailHoles[idx].stroke = val;
+    if(otherIdx !== -1){
+      // Swap instead of block — see onHoleFieldChange for the same pattern in live Round Entry.
+      historyDetailHoles[otherIdx].stroke = prevVal;
+      renderHistoryDetailBody();
       setHistoryDetailEditable(historyDetailEditing); // re-render wipes disabled state, so re-apply it
       return;
     }
+    updateHistoryDetailTotals();
+    return;
   }
 
   historyDetailHoles[idx][field] = val;
@@ -1609,12 +1844,27 @@ document.getElementById("holeCount").addEventListener("change", (e)=>{
   renderHoleTable();
   roundDirty = false; // fresh blank scorecard — nothing to lose yet
   updateUnsavedBanner();
+  maybeAutoFillOnCourseOrHoleCountChange(); // new hole count may match a different saved scorecard
 });
 
 // Date/Course are part of the saved round record too, so changing them also counts as
 // "unsaved work" for the reminder banner.
 document.getElementById("roundDate").addEventListener("input", markRoundDirty);
 document.getElementById("roundCourse").addEventListener("input", markRoundDirty);
+document.getElementById("roundCourse").addEventListener("change", maybeAutoFillOnCourseOrHoleCountChange);
+
+document.getElementById("loadScorecardBtn").addEventListener("click", ()=>{
+  tryAutoFillCourseScorecard({silent:false});
+});
+
+document.getElementById("saveScorecardBtn").addEventListener("click", ()=>{
+  const name = document.getElementById("roundCourse").value.trim();
+  if(!name){ alert("Enter a course name before saving its scorecard."); return; }
+  const holeCount = Number(document.getElementById("holeCount").value);
+  upsertCourseEntry(name, holeCount, holes);
+  populateLibCourseSelect();
+  alert(`Saved the Par / Stroke Index scorecard for "${name}" (${holeCount} holes). It'll auto-fill next time this course is played.`);
+});
 
 // Best-effort reminder for regular browser tabs — iOS PWAs in standalone mode don't reliably
 // fire beforeunload, so the on-screen "unsaved scores" banner above is the primary safety net.
@@ -1782,14 +2032,53 @@ document.getElementById("clearHistoryBtn").addEventListener("click", ()=>{
 
 document.getElementById("exportCsvBtn").addEventListener("click", exportCsv);
 
+document.getElementById("libCourseSelect").addEventListener("change", (e)=>{
+  const idx = e.target.value;
+  if(idx === ""){ resetLibForm(); return; }
+  loadLibCourseIntoForm(Number(idx));
+});
+
+document.getElementById("libHoleCount").addEventListener("change", (e)=>{
+  // Switching hole count starts a fresh scorecard at that size — Stroke Index assignment for a
+  // 9-hole layout isn't simply "half of" the 18-hole one, so the old holes don't carry over.
+  buildLibHoles(Number(e.target.value));
+  renderLibScorecardTable();
+  document.getElementById("libCourseSelect").value = "";
+});
+
+document.getElementById("saveCourseBtn").addEventListener("click", ()=>{
+  const name = document.getElementById("libCourseName").value.trim();
+  if(!name){ alert("Enter a course name before saving."); return; }
+  const holeCount = Number(document.getElementById("libHoleCount").value);
+  upsertCourseEntry(name, holeCount, libHoles);
+  populateLibCourseSelect(name, holeCount);
+  alert(`Saved "${name}" (${holeCount} holes) to the Course Library. It now appears in Round Entry's course suggestions and will auto-fill its scorecard.`);
+});
+
+document.getElementById("deleteCourseBtn").addEventListener("click", ()=>{
+  const idx = document.getElementById("libCourseSelect").value;
+  if(idx === ""){ alert("Select a saved course to delete first."); return; }
+  const c = courseLibrary[Number(idx)];
+  if(!c) return;
+  if(!confirm(`Delete the saved scorecard for "${c.name}" (${c.holeCount} holes)? This does not affect any rounds already saved to history.`)) return;
+  courseLibrary.splice(Number(idx), 1);
+  saveCourses();
+  resetLibForm();
+  populateLibCourseSelect();
+});
+
 // init
 loadHistory();
 loadProfiles();
+loadCourses();
 populateProfileSelect("");
 buildHoles(18);
 renderHoleTable();
 renderHistory();
 setupCourseAutocomplete();
+buildLibHoles(18);
+renderLibScorecardTable();
+populateLibCourseSelect();
 document.getElementById("roundDate").value = new Date().toISOString().slice(0,10);
 
 if("serviceWorker" in navigator){

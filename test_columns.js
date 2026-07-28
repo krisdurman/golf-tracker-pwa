@@ -61,7 +61,7 @@ function wait(ms){ return new Promise(r=>setTimeout(r, ms)); }
   const grandLabels = [...grandCells.children].map(td=>td.id || "");
   check("Live tfoot putts total is last cell", /putts/i.test(grandLabels[grandLabels.length-1]));
 
-  // ---- 6. Duplicate stroke index rejection on live table ----
+  // ---- 6. Duplicate stroke index is resolved by an automatic swap, not a blocking alert ----
   // hole 2's stroke select -> set to same value as hole 1's stroke select
   const rows = [...doc.querySelectorAll("#holeTable tbody tr")];
   const row1Stroke = rows[0].querySelector('select[data-field="stroke"]');
@@ -72,16 +72,19 @@ function wait(ms){ return new Promise(r=>setTimeout(r, ms)); }
   let alertMsg = null;
   window.alert = (msg) => { alertMsg = msg; };
 
-  row2Stroke.value = origRow1Val; // force duplicate
+  row2Stroke.value = origRow1Val; // set hole 2's Stroke Index to hole 1's current value
   row2Stroke.dispatchEvent(new window.Event("change", {bubbles:true}));
   await wait(50);
 
-  check("Duplicate stroke triggers alert", !!alertMsg && /already used/i.test(alertMsg));
+  check("No blocking alert on duplicate stroke (swap instead)", alertMsg === null);
 
-  // after rejection+re-render, re-query row2's select and confirm it reverted (not equal to row1's dup value... it should equal its original stored value)
+  // Hole 2 should now hold hole 1's old value, and hole 1 should have picked up hole 2's old
+  // value in exchange — a clean swap, so both holes still hold unique Stroke Index values.
   const rows2 = [...doc.querySelectorAll("#holeTable tbody tr")];
+  const row1StrokeAfter = rows2[0].querySelector('select[data-field="stroke"]');
   const row2StrokeAfter = rows2[1].querySelector('select[data-field="stroke"]');
-  check("Row2 stroke reverted after duplicate rejection", row2StrokeAfter.value === origRow2Val);
+  check("Hole 2 took hole 1's Stroke Index", row2StrokeAfter.value === origRow1Val);
+  check("Hole 1 took hole 2's old Stroke Index in exchange", row1StrokeAfter.value === origRow2Val);
 
   // ---- 7. Round Detail modal: thead / row order ----
   const hdTheadCells = [...doc.querySelectorAll("#historyDetailTable thead th")].map(th=>th.textContent.trim());
@@ -125,13 +128,14 @@ function wait(ms){ return new Promise(r=>setTimeout(r, ms)); }
   const hdParOpts = [...hdParSelect.options].map(o=>o.value);
   check("Modal par options are 3,4,5", JSON.stringify(hdParOpts) === JSON.stringify(["3","4","5"]));
 
-  // ---- 8. Duplicate stroke rejection in modal ----
+  // ---- 8. Duplicate stroke in modal resolves by swap, not a blocking alert ----
   window.setHistoryDetailEditable(true);
   await wait(20);
 
   const hdRows = [...doc.querySelectorAll("#historyDetailBody tr")];
   const hdRow1Stroke = hdRows[0].querySelector('select[data-field="stroke"]');
   const hdRow2Stroke = hdRows[1].querySelector('select[data-field="stroke"]');
+  const hdOrigRow1Val = hdRow1Stroke.value;
   const hdOrigRow2Val = hdRow2Stroke.value;
 
   let hdAlertMsg = null;
@@ -141,11 +145,13 @@ function wait(ms){ return new Promise(r=>setTimeout(r, ms)); }
   hdRow2Stroke.dispatchEvent(new window.Event("change", {bubbles:true}));
   await wait(50);
 
-  check("Modal duplicate stroke triggers alert", !!hdAlertMsg && /already used/i.test(hdAlertMsg));
+  check("No blocking alert on modal duplicate stroke (swap instead)", hdAlertMsg === null);
 
   const hdRows2 = [...doc.querySelectorAll("#historyDetailBody tr")];
+  const hdRow1StrokeAfter = hdRows2[0].querySelector('select[data-field="stroke"]');
   const hdRow2StrokeAfter = hdRows2[1].querySelector('select[data-field="stroke"]');
-  check("Modal row2 stroke reverted after duplicate rejection", hdRow2StrokeAfter.value === hdOrigRow2Val);
+  check("Modal hole 2 took hole 1's Stroke Index", hdRow2StrokeAfter.value === hdOrigRow1Val);
+  check("Modal hole 1 took hole 2's old Stroke Index in exchange", hdRow1StrokeAfter.value === hdOrigRow2Val);
 
   // ---- report ----
   let allPass = true;
