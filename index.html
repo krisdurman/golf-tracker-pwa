@@ -90,6 +90,18 @@
   .calc-cell{font-weight:700;color:var(--green-dark);}
   tfoot tr.subtotal-row td{background:#eef4f0;font-weight:600;}
   tfoot tr.grand-row td{background:#dcece2;font-weight:800;}
+  .course-field-wrap{position:relative;}
+  .course-suggestions{
+    display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;
+    background:#fff;border:1px solid var(--line);border-radius:8px;
+    max-height:240px;overflow-y:auto;z-index:30;box-shadow:0 6px 16px rgba(0,0,0,0.12);
+  }
+  .course-suggestions.show{display:block;}
+  .course-suggestion-item{padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--line);}
+  .course-suggestion-item:last-child{border-bottom:none;}
+  .course-suggestion-item:hover, .course-suggestion-item.active{background:#eef4f0;}
+  .course-suggestion-name{font-size:0.85rem;color:var(--ink);font-weight:600;}
+  .course-suggestion-region{font-size:0.72rem;color:var(--muted);}
   .stat{
     background:#f4f8f5;border-radius:10px;padding:10px 12px;text-align:center;
   }
@@ -141,6 +153,22 @@
           <input type="text" id="playerName" placeholder="Player name" style="width:180px;">
         </div>
         <div>
+          <label>Gender</label>
+          <select id="playerGender">
+            <option value="Men">Men</option>
+            <option value="Women">Women</option>
+          </select>
+        </div>
+        <div>
+          <label>Tee Marker</label>
+          <select id="teeMarker">
+            <option value="Yellow">Yellow</option>
+            <option value="White">White</option>
+            <option value="Blue">Blue</option>
+            <option value="Red">Red</option>
+          </select>
+        </div>
+        <div>
           <label>HI (Handicap Index)</label>
           <input type="number" id="playerHI" step="0.1" placeholder="e.g. 14.2" style="width:100px;">
         </div>
@@ -154,9 +182,10 @@
           <label>Date</label>
           <input type="date" id="roundDate">
         </div>
-        <div>
+        <div class="course-field-wrap">
           <label>Course</label>
-          <input type="text" id="roundCourse" placeholder="Course name" style="width:180px;">
+          <input type="text" id="roundCourse" placeholder="Course name" style="width:200px;" autocomplete="off">
+          <div id="courseSuggestions" class="course-suggestions"></div>
         </div>
         <div>
           <label>Holes</label>
@@ -336,6 +365,150 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script>
 const STORAGE_KEY = "golfTrackerHistoryV1";
+
+// SA Top 100 Courses 2026 ranking (satop100courses.com) — used for the Course field's autocomplete suggestions.
+// Free-text entry is still allowed; this list only powers the suggestion dropdown.
+const TOP100_COURSES = [
+  {name:"The Links at Fancourt", region:"George - Garden Route"},
+  {name:"Blair Atholl", region:"Lanseria - Gauteng"},
+  {name:"Pearl Valley", region:"Near Paarl, Winelands - Western Cape"},
+  {name:"Durban Country Club", region:"Durban - KwaZulu-Natal"},
+  {name:"Leopard Creek", region:"Malelane - Mpumalanga"},
+  {name:"Arabella", region:"Near Kleinmond - Western Cape"},
+  {name:"St Francis Links", region:"St Francis Bay - Eastern Cape"},
+  {name:"Glendower", region:"Johannesburg - Gauteng"},
+  {name:"Sishen", region:"Kathu - Northern Cape & Free State"},
+  {name:"Gary Player CC", region:"Sun City - North West Province"},
+  {name:"Elements", region:"Near Bela Bela - Limpopo"},
+  {name:"Royal Johannesburg (East)", region:"Johannesburg - Gauteng"},
+  {name:"Pezula", region:"Knysna - Garden Route"},
+  {name:"Fancourt Montagu", region:"George - Garden Route"},
+  {name:"Pinnacle Point", region:"Mossel Bay - Garden Route"},
+  {name:"The Club at Steyn City", region:"Fourways - Gauteng"},
+  {name:"East London", region:"East London - Eastern Cape"},
+  {name:"Zimbali", region:"Ballito, KZN North Coast - KwaZulu-Natal"},
+  {name:"Humewood", region:"Port Elizabeth - Eastern Cape"},
+  {name:"Champagne Sports Resort", region:"Central Drakensberg - KwaZulu-Natal"},
+  {name:"Highland Gate", region:"Near Dullstroom - Mpumalanga"},
+  {name:"Pretoria Country Club", region:"Pretoria - Gauteng"},
+  {name:"Simola", region:"Knysna - Garden Route"},
+  {name:"Erinvale", region:"Somerset West - Western Cape"},
+  {name:"Royal Johannesburg (West)", region:"Johannesburg - Gauteng"},
+  {name:"Fancourt Outeniqua", region:"George - Garden Route"},
+  {name:"CCJ Woodmead", region:"Sandton - Gauteng"},
+  {name:"Houghton", region:"Johannesburg - Gauteng"},
+  {name:"George Golf Club", region:"George - Garden Route"},
+  {name:"Parkview", region:"Johannesburg - Gauteng"},
+  {name:"Prince's Grant", region:"KwaDukuza, KZN North Coast - KwaZulu-Natal"},
+  {name:"De Zalze", region:"Stellenbosch, Winelands - Western Cape"},
+  {name:"Victoria", region:"Pietermaritzburg - KwaZulu-Natal"},
+  {name:"CCJ Rocklands", region:"Sandton - Gauteng"},
+  {name:"Hermanus (East course)", region:"Hermanus - Western Cape"},
+  {name:"Kyalami", region:"Midrand - Gauteng"},
+  {name:"Eye of Africa", region:"Johannesburg - Gauteng"},
+  {name:"Pecanwood", region:"Hartbeespoort Dam - North West Province"},
+  {name:"Maccauvlei", region:"Vereeniging - Free State"},
+  {name:"Ebotse Links", region:"Benoni - Gauteng"},
+  {name:"Serengeti (Signature)", region:"Kempton Park - Gauteng"},
+  {name:"Modderfontein", region:"Johannesburg - Gauteng"},
+  {name:"Woodhill", region:"Pretoria - Gauteng"},
+  {name:"Randpark Firethorn", region:"Randburg - Gauteng"},
+  {name:"Cotswold Downs", region:"Hillcrest - KwaZulu-Natal"},
+  {name:"Royal Cape", region:"Cape Town - Western Cape"},
+  {name:"Bryanston", region:"Sandton - Gauteng"},
+  {name:"Steenberg", region:"Cape Town - Western Cape"},
+  {name:"Killarney", region:"Johannesburg - Gauteng"},
+  {name:"San Lameer", region:"Near Southbroom, KZN South Coast - KwaZulu-Natal"},
+  {name:"Plettenberg Bay CC", region:"Plettenberg Bay - Garden Route"},
+  {name:"Wild Coast", region:"Near Port Edward, KZN South Coast - KwaZulu-Natal"},
+  {name:"Wingate Park", region:"Pretoria - Gauteng"},
+  {name:"The Woods at Mount Edgecombe", region:"Umhlanga - KwaZulu-Natal"},
+  {name:"Clovelly", region:"Fish Hoek - Western Cape"},
+  {name:"Gowrie Farm", region:"Nottingham Road, KZN Midlands - KwaZulu-Natal"},
+  {name:"Stellenbosch", region:"Stellenbosch, Winelands - Western Cape"},
+  {name:"Atlantic Beach Links", region:"Melkbosstrand - Western Cape"},
+  {name:"Zebula", region:"Near Bela Bela - Limpopo"},
+  {name:"Wanderers", region:"Johannesburg - Gauteng"},
+  {name:"Dainfern", region:"Fourways - Gauteng"},
+  {name:"The Lakes at Mount Edgecombe", region:"Umhlanga - KwaZulu-Natal"},
+  {name:"Eagle Canyon", region:"Honeydew - Gauteng"},
+  {name:"Goldfields West", region:"Carletonville - Gauteng"},
+  {name:"Irene", region:"Centurion - Gauteng"},
+  {name:"Krugersdorp", region:"Krugersdorp - Gauteng"},
+  {name:"Ruimsig", region:"Roodepoort - Gauteng"},
+  {name:"Waterkloof Golf Club", region:"Pretoria - Gauteng"},
+  {name:"Paarl (Old Course)", region:"Paarl, Winelands - Western Cape"},
+  {name:"Knysna Golf Club", region:"Knysna - Garden Route"},
+  {name:"Oubaai", region:"Herold's Bay - Garden Route"},
+  {name:"Reading Country Club", region:"Alberton - Gauteng"},
+  {name:"Umhlali", region:"Ballito, KZN North Coast - KwaZulu-Natal"},
+  {name:"Mbombela", region:"Mbombela - Mpumalanga"},
+  {name:"Glenvista", region:"Johannesburg - Gauteng"},
+  {name:"Parys", region:"Parys - Free State"},
+  {name:"Lost City", region:"Sun City - North West Province"},
+  {name:"Mossel Bay Golf Club", region:"Mossel Bay - Garden Route"},
+  {name:"Umdoni Park", region:"Pennington, KZN South Coast - KwaZulu-Natal"},
+  {name:"St Francis Bay", region:"St Francis Bay - Eastern Cape"},
+  {name:"Goose Valley", region:"Plettenberg Bay - Garden Route"},
+  {name:"Centurion", region:"Centurion - Gauteng"},
+  {name:"King David Mowbray", region:"Cape Town - Western Cape"},
+  {name:"Royal Port Alfred", region:"Port Alfred - Eastern Cape"},
+  {name:"Katberg", region:"Near Fort Beaufort - Eastern Cape"},
+  {name:"Olivewood", region:"Chintsa East - Eastern Cape"},
+  {name:"Selborne Park", region:"Pennington, KZN South Coast - KwaZulu-Natal"},
+  {name:"Benoni CC", region:"Benoni - Gauteng"},
+  {name:"Kingswood", region:"George - Garden Route"},
+  {name:"Kambaku", region:"Komatipoort - Mpumalanga"},
+  {name:"Westlake", region:"Cape Town - Western Cape"},
+  {name:"Port Elizabeth Golf Club", region:"Port Elizabeth - Eastern Cape"},
+  {name:"Jackal Creek", region:"Honeydew - Gauteng"},
+  {name:"Wedgewood", region:"Port Elizabeth - Eastern Cape"},
+  {name:"Huddle Park", region:"Johannesburg - Gauteng"},
+  {name:"Bloemfontein", region:"Bloemfontein - Free State"},
+  {name:"Bosch Hoek", region:"Near Howick, KZN Midlands - KwaZulu-Natal"},
+  {name:"Emfuleni", region:"Vanderbijlpark - Gauteng"},
+  {name:"Southbroom", region:"Southbroom, KZN South Coast - KwaZulu-Natal"},
+  {name:"Somerset West CC", region:"Somerset West - Western Cape"}
+];
+
+function setupCourseAutocomplete(){
+  const input = document.getElementById("roundCourse");
+  const list = document.getElementById("courseSuggestions");
+  if(!input || !list) return;
+
+  function renderMatches(query){
+    const q = query.trim().toLowerCase();
+    if(q.length === 0){ list.classList.remove("show"); list.innerHTML = ""; return; }
+    const matches = TOP100_COURSES.filter(c => c.name.toLowerCase().includes(q)).slice(0, 8);
+    if(matches.length === 0){ list.classList.remove("show"); list.innerHTML = ""; return; }
+    list.innerHTML = matches.map(c => `
+      <div class="course-suggestion-item" data-name="${c.name.replace(/"/g,"&quot;")}">
+        <div class="course-suggestion-name">${c.name}</div>
+        <div class="course-suggestion-region">${c.region}</div>
+      </div>
+    `).join("");
+    list.classList.add("show");
+  }
+
+  input.addEventListener("input", () => renderMatches(input.value));
+  input.addEventListener("focus", () => { if(input.value.trim()) renderMatches(input.value); });
+
+  list.addEventListener("mousedown", (e) => {
+    // mousedown (not click) so it fires before the input's blur hides the list
+    const item = e.target.closest(".course-suggestion-item");
+    if(item){
+      input.value = item.dataset.name;
+      list.classList.remove("show");
+      list.innerHTML = "";
+    }
+  });
+
+  document.addEventListener("click", (e) => {
+    if(e.target !== input && !list.contains(e.target)){
+      list.classList.remove("show");
+    }
+  });
+}
 
 function defaultHole(n){
   return {hole:n, stroke:n, par:4, score:"", putts:"", fairway:"na", green:"na", shortShots:0, penalties:0};
@@ -810,6 +983,8 @@ document.getElementById("saveRoundBtn").addEventListener("click", ()=>{
     date: document.getElementById("roundDate").value || new Date().toISOString().slice(0,10),
     course: document.getElementById("roundCourse").value || "",
     playerName: document.getElementById("playerName").value || "",
+    gender: document.getElementById("playerGender").value || "",
+    tee: document.getElementById("teeMarker").value || "",
     hi: document.getElementById("playerHI").value || "",
     hc: document.getElementById("playerHC").value || "",
     holes: JSON.parse(JSON.stringify(holes)),
@@ -841,6 +1016,7 @@ loadHistory();
 buildHoles(18);
 renderHoleTable();
 renderHistory();
+setupCourseAutocomplete();
 document.getElementById("roundDate").value = new Date().toISOString().slice(0,10);
 
 if("serviceWorker" in navigator){
