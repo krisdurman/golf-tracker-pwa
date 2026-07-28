@@ -151,6 +151,24 @@
     background:#fff;color:var(--ink);
   }
   .profile-fields input[readonly]{background:#f1f5f2;color:var(--muted);}
+  .modal-overlay{
+    display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);
+    z-index:100;align-items:center;justify-content:center;padding:16px;
+  }
+  .modal-overlay.show{display:flex;}
+  .modal-box{
+    background:#fff;border-radius:14px;max-width:820px;width:100%;
+    max-height:88vh;overflow-y:auto;padding:20px;position:relative;
+  }
+  .modal-close{
+    position:absolute;top:14px;right:14px;background:none;border:none;
+    font-size:1.3rem;line-height:1;cursor:pointer;color:var(--muted);
+  }
+  .modal-close:hover{color:var(--ink);}
+  .modal-meta{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px dashed var(--line);}
+  .modal-meta div{font-size:0.82rem;color:var(--ink);}
+  .modal-meta div strong{display:block;font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;font-weight:600;margin-bottom:2px;}
+  .modal-table th, .modal-table td{text-align:center;padding:6px 4px;font-size:0.82rem;}
 </style>
 </head>
 <body>
@@ -336,7 +354,7 @@
             <tr>
               <th>#</th><th>Date</th><th>Course</th><th>Score</th><th>Putts</th>
               <th>Par+</th><th>Dbl+</th><th>3-Putts</th><th>2+ Shots &lt;50</th>
-              <th>Penalties</th><th>Biggest Opportunity</th><th></th>
+              <th>Penalties</th><th>Biggest Opportunity</th><th></th><th></th>
             </tr>
           </thead>
           <tbody id="historyBody"></tbody>
@@ -419,6 +437,66 @@
     <h2>Score Impact Trend</h2>
     <div class="chart-wrap"><canvas id="impactTrendChart"></canvas></div>
     <p class="small-note">3+ putts, 2+ shots inside 50, and penalty strokes per round — the things most likely to be inflating your score.</p>
+  </div>
+</div>
+
+<div class="modal-overlay" id="historyDetailModal">
+  <div class="modal-box">
+    <button class="modal-close" id="historyDetailClose" type="button" aria-label="Close">&times;</button>
+    <h2 style="margin-top:0;">Round Detail</h2>
+    <div class="modal-meta" id="historyDetailMeta"></div>
+    <div class="table-scroll">
+      <table class="modal-table" id="historyDetailTable">
+        <thead>
+          <tr>
+            <th class="hole-col">Hole</th>
+            <th>Stroke</th>
+            <th>Par</th>
+            <th>Score</th>
+            <th>Nett</th>
+            <th>SP</th>
+            <th>Putts</th>
+            <th>Fairway</th>
+            <th>Green (GIR)</th>
+            <th>Shots &lt;50</th>
+            <th>Penalties</th>
+          </tr>
+        </thead>
+        <tbody id="historyDetailBody"></tbody>
+        <tfoot>
+          <tr class="subtotal-row">
+            <td>Front 9</td>
+            <td></td>
+            <td id="hdFrontPar">-</td>
+            <td id="hdFrontScore">-</td>
+            <td id="hdFrontNett">-</td>
+            <td id="hdFrontSP">-</td>
+            <td id="hdFrontPutts">-</td>
+            <td></td><td></td><td></td><td></td>
+          </tr>
+          <tr class="subtotal-row" id="hdBackRow">
+            <td>Back 9</td>
+            <td></td>
+            <td id="hdBackPar">-</td>
+            <td id="hdBackScore">-</td>
+            <td id="hdBackNett">-</td>
+            <td id="hdBackSP">-</td>
+            <td id="hdBackPutts">-</td>
+            <td></td><td></td><td></td><td></td>
+          </tr>
+          <tr class="grand-row">
+            <td>Total</td>
+            <td></td>
+            <td id="hdTotPar">-</td>
+            <td id="hdTotScore">-</td>
+            <td id="hdTotNett">-</td>
+            <td id="hdTotSP">-</td>
+            <td id="hdTotPutts">-</td>
+            <td colspan="4"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
   </div>
 </div>
 
@@ -1070,9 +1148,16 @@ function renderHistory(){
       <td>${r.stats.shortGame2plus}</td>
       <td>${r.stats.penalties}</td>
       <td><span class="tag ${r.stats.opportunity==='Putting'?'putting':(r.stats.opportunity==='Short Game'?'short':'long')}">${r.stats.opportunity}</span></td>
+      <td><button class="btn secondary" style="padding:4px 8px;font-size:0.72rem;" data-view="${realIdx}">View</button></td>
       <td><button class="btn danger" style="padding:4px 8px;font-size:0.72rem;" data-del="${realIdx}">Delete</button></td>
     `;
     body.appendChild(tr);
+  });
+
+  body.querySelectorAll("[data-view]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      showHistoryDetail(Number(btn.dataset.view));
+    });
   });
 
   body.querySelectorAll("[data-del]").forEach(btn=>{
@@ -1085,6 +1170,76 @@ function renderHistory(){
   });
 
   renderTrendCharts();
+}
+
+// Read-only label lookup for the Fairway/Green select codes, used in the historical round detail view.
+const DIRECTION_LABELS = { na:"-", hit:"Hit", left:"Miss L", right:"Miss R", short:"Miss Short", long:"Miss Long" };
+
+function showHistoryDetail(idx){
+  const r = history[idx];
+  if(!r) return;
+  const hc = num(r.hc);
+  const holesArr = r.holes || [];
+
+  const metaBox = document.getElementById("historyDetailMeta");
+  metaBox.innerHTML = `
+    <div><strong>Player</strong>${r.playerName || "-"}</div>
+    <div><strong>Date</strong>${r.date || "-"}</div>
+    <div><strong>Course</strong>${r.course || "-"}</div>
+    <div><strong>Tee</strong>${r.tee || "-"}</div>
+    <div><strong>HI</strong>${r.hi || "-"}</div>
+    <div><strong>HC</strong>${r.hc || "0"}</div>
+  `;
+
+  const body = document.getElementById("historyDetailBody");
+  body.innerHTML = holesArr.map((h, i)=>{
+    const {nett, sp} = holeNettSP(h, hc);
+    const isPar3 = Number(h.par) === 3;
+    return `
+      <tr>
+        <td>${h.hole}</td>
+        <td>${h.stroke}</td>
+        <td>${h.par}</td>
+        <td>${h.score === "" ? "-" : h.score}</td>
+        <td class="calc-cell">${nett === "" ? "-" : nett}</td>
+        <td class="calc-cell">${sp === "" ? "-" : sp}</td>
+        <td>${h.putts === "" ? "-" : h.putts}</td>
+        <td>${isPar3 ? "-" : (DIRECTION_LABELS[h.fairway] ?? "-")}</td>
+        <td>${DIRECTION_LABELS[h.green] ?? "-"}</td>
+        <td>${h.shortShots || 0}</td>
+        <td>${h.penalties || 0}</td>
+      </tr>
+    `;
+  }).join("");
+
+  const stats = computeStats(holesArr, hc);
+  const hasBack = holesArr.length > 9;
+  document.getElementById("hdBackRow").style.display = hasBack ? "" : "none";
+
+  document.getElementById("hdFrontPar").textContent = stats.frontPar;
+  document.getElementById("hdFrontScore").textContent = stats.frontScore;
+  document.getElementById("hdFrontNett").textContent = stats.frontNett;
+  document.getElementById("hdFrontSP").textContent = stats.frontSP;
+  document.getElementById("hdFrontPutts").textContent = stats.frontPutts;
+
+  if(hasBack){
+    document.getElementById("hdBackPar").textContent = stats.backPar;
+    document.getElementById("hdBackScore").textContent = stats.backScore;
+    document.getElementById("hdBackNett").textContent = stats.backNett;
+    document.getElementById("hdBackSP").textContent = stats.backSP;
+    document.getElementById("hdBackPutts").textContent = stats.backPutts;
+  }
+  document.getElementById("hdTotPar").textContent = stats.totPar;
+  document.getElementById("hdTotScore").textContent = stats.totScore;
+  document.getElementById("hdTotNett").textContent = stats.totNett;
+  document.getElementById("hdTotSP").textContent = stats.totSP;
+  document.getElementById("hdTotPutts").textContent = stats.totPutts;
+
+  document.getElementById("historyDetailModal").classList.add("show");
+}
+
+function closeHistoryDetail(){
+  document.getElementById("historyDetailModal").classList.remove("show");
 }
 
 function exportCsv(){
@@ -1107,6 +1262,14 @@ function exportCsv(){
 document.getElementById("holeCount").addEventListener("change", (e)=>{
   buildHoles(Number(e.target.value));
   renderHoleTable();
+});
+
+document.getElementById("historyDetailClose").addEventListener("click", closeHistoryDetail);
+document.getElementById("historyDetailModal").addEventListener("click", (e)=>{
+  if(e.target.id === "historyDetailModal") closeHistoryDetail();
+});
+document.addEventListener("keydown", (e)=>{
+  if(e.key === "Escape") closeHistoryDetail();
 });
 
 document.getElementById("playerHC").addEventListener("input", updateTotalsAndSummary);
