@@ -165,10 +165,19 @@
     font-size:1.3rem;line-height:1;cursor:pointer;color:var(--muted);
   }
   .modal-close:hover{color:var(--ink);}
-  .modal-meta{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px dashed var(--line);}
-  .modal-meta div{font-size:0.82rem;color:var(--ink);}
-  .modal-meta div strong{display:block;font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;font-weight:600;margin-bottom:2px;}
+  .modal-meta{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px dashed var(--line);}
+  .modal-meta input, .modal-meta select{
+    padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:0.85rem;
+    background:#fff;color:var(--ink);
+  }
+  .modal-meta input:disabled, .modal-meta select:disabled{
+    background:#f1f5f2;color:var(--ink);border-color:transparent;
+  }
   .modal-table th, .modal-table td{text-align:center;padding:6px 4px;font-size:0.82rem;}
+  .modal-table input, .modal-table select{width:44px;padding:3px;font-size:0.8rem;}
+  .modal-table input:disabled, .modal-table select:disabled{
+    background:#fff;border-color:transparent;color:var(--ink);appearance:none;-webkit-appearance:none;
+  }
 </style>
 </head>
 <body>
@@ -443,8 +452,45 @@
 <div class="modal-overlay" id="historyDetailModal">
   <div class="modal-box">
     <button class="modal-close" id="historyDetailClose" type="button" aria-label="Close">&times;</button>
-    <h2 style="margin-top:0;">Round Detail</h2>
-    <div class="modal-meta" id="historyDetailMeta"></div>
+    <div class="flex-between" style="margin-right:28px;">
+      <h2 style="margin-top:0;border:none;">Round Detail</h2>
+      <div>
+        <button class="btn secondary" id="historyDetailEditBtn" type="button" style="padding:6px 12px;font-size:0.8rem;">Edit</button>
+        <button class="btn" id="historyDetailSaveBtn" type="button" style="display:none;padding:6px 12px;font-size:0.8rem;">Save Changes</button>
+        <button class="btn secondary" id="historyDetailCancelBtn" type="button" style="display:none;padding:6px 12px;font-size:0.8rem;">Cancel</button>
+      </div>
+    </div>
+    <div class="modal-meta" id="historyDetailMeta">
+      <div>
+        <label style="display:block;font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px;">Player</label>
+        <input type="text" id="hdPlayerName" disabled style="width:150px;">
+      </div>
+      <div>
+        <label style="display:block;font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px;">Date</label>
+        <input type="date" id="hdDate" disabled style="width:140px;">
+      </div>
+      <div>
+        <label style="display:block;font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px;">Course</label>
+        <input type="text" id="hdCourse" disabled style="width:180px;">
+      </div>
+      <div>
+        <label style="display:block;font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px;">Tee</label>
+        <select id="hdTee" disabled>
+          <option value="Yellow">Yellow</option>
+          <option value="White">White</option>
+          <option value="Blue">Blue</option>
+          <option value="Red">Red</option>
+        </select>
+      </div>
+      <div>
+        <label style="display:block;font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px;">HI</label>
+        <input type="number" id="hdHI" step="0.1" disabled style="width:80px;">
+      </div>
+      <div>
+        <label style="display:block;font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px;">HC</label>
+        <input type="number" id="hdHC" step="1" min="0" disabled style="width:80px;">
+      </div>
+    </div>
     <div class="table-scroll">
       <table class="modal-table" id="historyDetailTable">
         <thead>
@@ -1175,45 +1221,104 @@ function renderHistory(){
 // Read-only label lookup for the Fairway/Green select codes, used in the historical round detail view.
 const DIRECTION_LABELS = { na:"-", hit:"Hit", left:"Miss L", right:"Miss R", short:"Miss Short", long:"Miss Long" };
 
+let historyDetailIdx = null;
+let historyDetailHoles = []; // working copy edited in the modal; only committed to history[] on Save
+let historyDetailEditing = false;
+
 function showHistoryDetail(idx){
   const r = history[idx];
   if(!r) return;
-  const hc = num(r.hc);
-  const holesArr = r.holes || [];
+  historyDetailIdx = idx;
+  historyDetailEditing = false;
+  historyDetailHoles = JSON.parse(JSON.stringify(r.holes || []));
 
-  const metaBox = document.getElementById("historyDetailMeta");
-  metaBox.innerHTML = `
-    <div><strong>Player</strong>${r.playerName || "-"}</div>
-    <div><strong>Date</strong>${r.date || "-"}</div>
-    <div><strong>Course</strong>${r.course || "-"}</div>
-    <div><strong>Tee</strong>${r.tee || "-"}</div>
-    <div><strong>HI</strong>${r.hi || "-"}</div>
-    <div><strong>HC</strong>${r.hc || "0"}</div>
-  `;
+  document.getElementById("hdPlayerName").value = r.playerName || "";
+  document.getElementById("hdDate").value = r.date || "";
+  document.getElementById("hdCourse").value = r.course || "";
+  document.getElementById("hdTee").value = r.tee || "Yellow";
+  document.getElementById("hdHI").value = r.hi || "";
+  document.getElementById("hdHC").value = r.hc || "0";
 
+  renderHistoryDetailBody();
+  updateHistoryDetailTotals();
+  setHistoryDetailEditable(false);
+
+  document.getElementById("historyDetailModal").classList.add("show");
+}
+
+function renderHistoryDetailBody(){
   const body = document.getElementById("historyDetailBody");
-  body.innerHTML = holesArr.map((h, i)=>{
-    const {nett, sp} = holeNettSP(h, hc);
+  body.innerHTML = historyDetailHoles.map((h, idx)=>{
     const isPar3 = Number(h.par) === 3;
     return `
       <tr>
         <td>${h.hole}</td>
-        <td>${h.stroke}</td>
-        <td>${h.par}</td>
-        <td>${h.score === "" ? "-" : h.score}</td>
-        <td class="calc-cell">${nett === "" ? "-" : nett}</td>
-        <td class="calc-cell">${sp === "" ? "-" : sp}</td>
-        <td>${h.putts === "" ? "-" : h.putts}</td>
-        <td>${isPar3 ? "-" : (DIRECTION_LABELS[h.fairway] ?? "-")}</td>
-        <td>${DIRECTION_LABELS[h.green] ?? "-"}</td>
-        <td>${h.shortShots || 0}</td>
-        <td>${h.penalties || 0}</td>
+        <td><input type="number" min="1" max="18" value="${h.stroke}" data-hidx="${idx}" data-field="stroke" disabled></td>
+        <td><input type="number" min="3" max="6" value="${h.par}" data-hidx="${idx}" data-field="par" disabled></td>
+        <td><input type="number" min="1" max="15" value="${h.score}" data-hidx="${idx}" data-field="score" disabled></td>
+        <td class="calc-cell" id="hd-nett-${idx}">-</td>
+        <td class="calc-cell" id="hd-sp-${idx}">-</td>
+        <td><input type="number" min="0" max="6" value="${h.putts}" data-hidx="${idx}" data-field="putts" disabled></td>
+        <td>
+          <select data-hidx="${idx}" data-field="fairway" ${isPar3 ? "disabled" : ""} disabled>
+            <option value="na" ${h.fairway==="na"?"selected":""}>N/A</option>
+            <option value="hit" ${h.fairway==="hit"?"selected":""}>Hit</option>
+            <option value="left" ${h.fairway==="left"?"selected":""}>Miss L</option>
+            <option value="right" ${h.fairway==="right"?"selected":""}>Miss R</option>
+            <option value="short" ${h.fairway==="short"?"selected":""}>Miss Short</option>
+            <option value="long" ${h.fairway==="long"?"selected":""}>Miss Long</option>
+          </select>
+        </td>
+        <td>
+          <select data-hidx="${idx}" data-field="green" disabled>
+            <option value="na" ${h.green==="na"?"selected":""}>-</option>
+            <option value="hit" ${h.green==="hit"?"selected":""}>Hit</option>
+            <option value="left" ${h.green==="left"?"selected":""}>Miss L</option>
+            <option value="right" ${h.green==="right"?"selected":""}>Miss R</option>
+            <option value="short" ${h.green==="short"?"selected":""}>Miss Short</option>
+            <option value="long" ${h.green==="long"?"selected":""}>Miss Long</option>
+          </select>
+        </td>
+        <td><input type="number" min="0" max="5" value="${h.shortShots}" data-hidx="${idx}" data-field="shortShots" disabled></td>
+        <td><input type="number" min="0" max="5" value="${h.penalties}" data-hidx="${idx}" data-field="penalties" disabled></td>
       </tr>
     `;
   }).join("");
 
-  const stats = computeStats(holesArr, hc);
-  const hasBack = holesArr.length > 9;
+  body.querySelectorAll("input, select").forEach(el=>{
+    el.addEventListener("input", onHistoryDetailFieldChange);
+    el.addEventListener("change", onHistoryDetailFieldChange);
+  });
+}
+
+function onHistoryDetailFieldChange(e){
+  const idx = Number(e.target.dataset.hidx);
+  const field = e.target.dataset.field;
+  let val = e.target.value;
+  if(["par","score","putts","shortShots","penalties","stroke"].includes(field)){
+    val = val === "" ? "" : Number(val);
+  }
+  historyDetailHoles[idx][field] = val;
+  if(field === "par"){
+    renderHistoryDetailBody(); // re-render to enable/disable fairway select for par 3
+    setHistoryDetailEditable(historyDetailEditing); // re-render wipes disabled state, so re-apply it
+  }
+  updateHistoryDetailTotals();
+}
+
+function updateHistoryDetailTotals(){
+  const hc = num(document.getElementById("hdHC").value);
+
+  historyDetailHoles.forEach((h, idx)=>{
+    const {nett, sp} = holeNettSP(h, hc);
+    const nettCell = document.getElementById(`hd-nett-${idx}`);
+    const spCell = document.getElementById(`hd-sp-${idx}`);
+    if(nettCell) nettCell.textContent = nett === "" ? "-" : nett;
+    if(spCell) spCell.textContent = sp === "" ? "-" : sp;
+  });
+
+  const stats = computeStats(historyDetailHoles, hc);
+  const hasBack = historyDetailHoles.length > 9;
   document.getElementById("hdBackRow").style.display = hasBack ? "" : "none";
 
   document.getElementById("hdFrontPar").textContent = stats.frontPar;
@@ -1234,11 +1339,27 @@ function showHistoryDetail(idx){
   document.getElementById("hdTotNett").textContent = stats.totNett;
   document.getElementById("hdTotSP").textContent = stats.totSP;
   document.getElementById("hdTotPutts").textContent = stats.totPutts;
+}
 
-  document.getElementById("historyDetailModal").classList.add("show");
+function setHistoryDetailEditable(editing){
+  historyDetailEditing = editing;
+  ["hdPlayerName","hdDate","hdCourse","hdTee","hdHI","hdHC"].forEach(id=>{
+    document.getElementById(id).disabled = !editing;
+  });
+  document.querySelectorAll("#historyDetailBody input").forEach(el=>{ el.disabled = !editing; });
+  document.querySelectorAll("#historyDetailBody select").forEach(el=>{
+    const idx = Number(el.dataset.hidx);
+    const isPar3Fairway = el.dataset.field === "fairway" && Number(historyDetailHoles[idx].par) === 3;
+    el.disabled = !editing || isPar3Fairway;
+  });
+  document.getElementById("historyDetailEditBtn").style.display = editing ? "none" : "";
+  document.getElementById("historyDetailSaveBtn").style.display = editing ? "" : "none";
+  document.getElementById("historyDetailCancelBtn").style.display = editing ? "" : "none";
 }
 
 function closeHistoryDetail(){
+  if(historyDetailEditing && !confirm("Discard unsaved changes to this round?")) return;
+  historyDetailEditing = false;
   document.getElementById("historyDetailModal").classList.remove("show");
 }
 
@@ -1270,6 +1391,40 @@ document.getElementById("historyDetailModal").addEventListener("click", (e)=>{
 });
 document.addEventListener("keydown", (e)=>{
   if(e.key === "Escape") closeHistoryDetail();
+});
+
+document.getElementById("hdHC").addEventListener("input", updateHistoryDetailTotals);
+document.getElementById("hdHC").addEventListener("change", updateHistoryDetailTotals);
+
+document.getElementById("historyDetailEditBtn").addEventListener("click", ()=>{
+  setHistoryDetailEditable(true);
+});
+
+document.getElementById("historyDetailCancelBtn").addEventListener("click", ()=>{
+  if(!confirm("Discard unsaved changes to this round?")) return;
+  showHistoryDetail(historyDetailIdx);
+});
+
+document.getElementById("historyDetailSaveBtn").addEventListener("click", ()=>{
+  const idx = historyDetailIdx;
+  if(idx === null || !history[idx]) return;
+  const hc = document.getElementById("hdHC").value;
+  const updated = {
+    ...history[idx],
+    playerName: document.getElementById("hdPlayerName").value.trim(),
+    date: document.getElementById("hdDate").value,
+    course: document.getElementById("hdCourse").value.trim(),
+    tee: document.getElementById("hdTee").value,
+    hi: document.getElementById("hdHI").value,
+    hc: hc,
+    holes: JSON.parse(JSON.stringify(historyDetailHoles))
+  };
+  updated.stats = computeStats(updated.holes, num(hc));
+  history[idx] = updated;
+  saveHistory();
+  renderHistory();
+  showHistoryDetail(idx);
+  alert("Round updated.");
 });
 
 document.getElementById("playerHC").addEventListener("input", updateTotalsAndSummary);
