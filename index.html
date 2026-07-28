@@ -356,12 +356,14 @@ function strokesForHole(si, hc){
   return full + (num(si) <= rem ? 1 : 0);
 }
 
-// Nett = gross score minus strokes received. SP (Stableford Points) = 3 - (Nett - Par), floored at 0, uncapped above.
+// Nett = gross score minus strokes received.
+// SP (Stableford Points), standard scale: net double-bogey-or-worse=0, net bogey=1, net par=2, net birdie=3, net eagle=4, etc.
+// SP = 2 - (Nett - Par), floored at 0, uncapped above.
 function holeNettSP(h, hc){
   if(h.score === "" || h.score === null || h.score === undefined) return {nett:"", sp:""};
   const strokes = strokesForHole(h.stroke, hc);
   const nett = num(h.score) - strokes;
-  const sp = Math.max(0, 3 - (nett - num(h.par)));
+  const sp = Math.max(0, 2 - (nett - num(h.par)));
   return {nett, sp};
 }
 
