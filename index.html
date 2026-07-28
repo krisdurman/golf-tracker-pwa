@@ -373,6 +373,21 @@
       </div>
       <p class="empty-note" id="historyEmpty">No rounds saved yet. Complete a round on the left and click "Save Round to History".</p>
     </div>
+
+    <div class="card">
+      <h2>Career Totals</h2>
+      <div class="summary-grid">
+        <div class="stat"><div class="num" id="careerRounds">-</div><div class="lbl">Rounds Played</div></div>
+        <div class="stat"><div class="num" id="careerAvgScore">-</div><div class="lbl">Avg Score</div></div>
+        <div class="stat"><div class="num" id="careerAvgNett">-</div><div class="lbl">Avg Nett</div></div>
+        <div class="stat"><div class="num" id="careerAvgSP">-</div><div class="lbl">Avg SP</div></div>
+        <div class="stat"><div class="num" id="careerAvgPutts">-</div><div class="lbl">Avg Putts</div></div>
+        <div class="stat"><div class="num" id="careerTotPenalties">-</div><div class="lbl">Career Penalties</div></div>
+      </div>
+      <div class="impact-row"><span>Best Round</span><span class="val" id="careerBest">-</span></div>
+      <div class="impact-row"><span>Worst Round</span><span class="val" id="careerWorst">-</span></div>
+      <p class="empty-note" id="careerEmpty">Save at least one round to see your career totals.</p>
+    </div>
   </div>
 
   <div>
@@ -431,23 +446,23 @@
 
 <div class="trends-layout">
   <div class="card">
-    <h2>Score &amp; Putts Trend</h2>
+    <h2>Cumulative Score &amp; Putts</h2>
     <div class="chart-wrap"><canvas id="scoreTrendChart"></canvas></div>
-    <p class="empty-note" id="trendEmpty1">Save at least one round to see your trend.</p>
+    <p class="empty-note" id="trendEmpty1">Save at least one round to see your running totals.</p>
   </div>
   <div class="card">
-    <h2>Round Quality Trend</h2>
+    <h2>Cumulative Round Quality</h2>
     <div class="chart-wrap"><canvas id="qualityTrendChart"></canvas></div>
-    <p class="empty-note" id="trendEmpty2">Par-or-Better vs Double-or-Worse holes, round over round.</p>
+    <p class="empty-note" id="trendEmpty2">Career running total of Sub-Par, Par, and Over-Par holes.</p>
   </div>
   <div class="card">
     <h2>Opportunity Breakdown (All Rounds)</h2>
     <div class="chart-wrap"><canvas id="opportunityChart"></canvas></div>
   </div>
   <div class="card">
-    <h2>Score Impact Trend</h2>
+    <h2>Cumulative Score Impact</h2>
     <div class="chart-wrap"><canvas id="impactTrendChart"></canvas></div>
-    <p class="small-note">3+ putts, 2+ shots inside 50, and penalty strokes per round — the things most likely to be inflating your score.</p>
+    <p class="small-note">Career running total of 3+ putts, 2+ shots inside 50, and penalty strokes — the things most likely to be inflating your score.</p>
   </div>
 </div>
 
@@ -1103,6 +1118,12 @@ function renderPatternChart(stats){
   });
 }
 
+// Turns a per-round array [v1, v2, v3, ...] into a running career total [v1, v1+v2, v1+v2+v3, ...].
+function cumulativeSum(arr){
+  let running = 0;
+  return arr.map(v => (running += num(v)));
+}
+
 function renderTrendCharts(){
   const labels = history.map((r,i)=> r.date ? r.date.slice(5) : `R${i+1}`);
   const hasData = history.length > 0;
@@ -1110,7 +1131,7 @@ function renderTrendCharts(){
   document.getElementById("trendEmpty1").style.display = hasData ? "none" : "block";
   document.getElementById("trendEmpty2").style.display = hasData ? "none" : "block";
 
-  // Score & Putts trend (dual axis line chart)
+  // Cumulative Score & Putts (dual axis line chart) — running career totals, not per-round values.
   scoreTrendChart = destroyChart(scoreTrendChart);
   scoreTrendChart = new Chart(document.getElementById("scoreTrendChart"), {
     type:"line",
@@ -1118,12 +1139,12 @@ function renderTrendCharts(){
       labels,
       datasets:[
         {
-          label:"Score", data: history.map(r=>r.stats.totScore),
+          label:"Cumulative Score", data: cumulativeSum(history.map(r=>r.stats.totScore)),
           borderColor: CHART_COLORS.green, backgroundColor: CHART_COLORS.green,
           yAxisID:"y", tension:0.25, pointRadius:4, pointStyle:"circle"
         },
         {
-          label:"Putts", data: history.map(r=>r.stats.totPutts),
+          label:"Cumulative Putts", data: cumulativeSum(history.map(r=>r.stats.totPutts)),
           borderColor: CHART_COLORS.blue, backgroundColor: CHART_COLORS.blue,
           yAxisID:"y1", tension:0.25, pointRadius:5, pointStyle:"rectRot"
         }
@@ -1133,25 +1154,24 @@ function renderTrendCharts(){
       responsive:true, maintainAspectRatio:false,
       plugins:{legend:{position:"bottom"}},
       scales:{
-        // Fixed floors (rather than beginAtZero) keep both axes readable at realistic golf scales,
-        // and also keep the Score and Putts markers from landing on the exact same pixel when
-        // there are only 1-2 saved rounds.
-        y:{position:"left", title:{display:true,text:"Score"}, grid:{color:CHART_COLORS.grid}, min:35},
-        y1:{position:"right", title:{display:true,text:"Putts"}, grid:{display:false}, min:18}
+        // Running totals only ever grow, so a plain beginAtZero range (rather than the fixed
+        // per-round floors used previously) is what makes sense here.
+        y:{position:"left", title:{display:true,text:"Cumulative Score"}, grid:{color:CHART_COLORS.grid}, beginAtZero:true},
+        y1:{position:"right", title:{display:true,text:"Cumulative Putts"}, grid:{display:false}, beginAtZero:true}
       }
     }
   });
 
-  // Round quality trend (sub-par vs par vs over-par holes, per round)
+  // Cumulative Round Quality — running career total of Sub-Par / Par / Over-Par holes.
   qualityTrendChart = destroyChart(qualityTrendChart);
   qualityTrendChart = new Chart(document.getElementById("qualityTrendChart"), {
     type:"bar",
     data:{
       labels,
       datasets:[
-        {label:"Sub-Par", data: history.map(r=>r.stats.subPar), backgroundColor: CHART_COLORS.greenLight, borderRadius:5},
-        {label:"Par", data: history.map(r=>r.stats.parCount), backgroundColor: CHART_COLORS.gold, borderRadius:5},
-        {label:"Over-Par", data: history.map(r=>r.stats.overPar), backgroundColor: CHART_COLORS.redLight, borderRadius:5}
+        {label:"Sub-Par", data: cumulativeSum(history.map(r=>r.stats.subPar)), backgroundColor: CHART_COLORS.greenLight, borderRadius:5},
+        {label:"Par", data: cumulativeSum(history.map(r=>r.stats.parCount)), backgroundColor: CHART_COLORS.gold, borderRadius:5},
+        {label:"Over-Par", data: cumulativeSum(history.map(r=>r.stats.overPar)), backgroundColor: CHART_COLORS.redLight, borderRadius:5}
       ]
     },
     options:{
@@ -1159,12 +1179,12 @@ function renderTrendCharts(){
       plugins:{legend:{position:"bottom"}},
       scales:{
         x:{grid:{display:false}},
-        y:{beginAtZero:true, ticks:{precision:0}, grid:{color:CHART_COLORS.grid}, title:{display:true,text:"Holes"}}
+        y:{beginAtZero:true, ticks:{precision:0}, grid:{color:CHART_COLORS.grid}, title:{display:true,text:"Cumulative Holes"}}
       }
     }
   });
 
-  // Opportunity breakdown across all saved rounds
+  // Opportunity breakdown across all saved rounds (already a career-wide aggregate, not per-round)
   const oppCounts = {Putting:0, "Short Game":0, "Long Game":0};
   history.forEach(r=>{ oppCounts[r.stats.opportunity] = (oppCounts[r.stats.opportunity]||0) + 1; });
   opportunityChart = destroyChart(opportunityChart);
@@ -1183,16 +1203,16 @@ function renderTrendCharts(){
     }
   });
 
-  // Score impact trend
+  // Cumulative Score Impact — running career total of 3+ putts, 2+ short-game shots, penalty strokes.
   impactTrendChart = destroyChart(impactTrendChart);
   impactTrendChart = new Chart(document.getElementById("impactTrendChart"), {
     type:"line",
     data:{
       labels,
       datasets:[
-        {label:"3+ Putts", data: history.map(r=>r.stats.threePutts), borderColor: CHART_COLORS.blue, backgroundColor: CHART_COLORS.blue, tension:0.25},
-        {label:"2+ Shots <50", data: history.map(r=>r.stats.shortGame2plus), borderColor: CHART_COLORS.gold, backgroundColor: CHART_COLORS.gold, tension:0.25},
-        {label:"Penalty Strokes", data: history.map(r=>r.stats.penalties), borderColor: CHART_COLORS.red, backgroundColor: CHART_COLORS.red, tension:0.25}
+        {label:"3+ Putts", data: cumulativeSum(history.map(r=>r.stats.threePutts)), borderColor: CHART_COLORS.blue, backgroundColor: CHART_COLORS.blue, tension:0.25},
+        {label:"2+ Shots <50", data: cumulativeSum(history.map(r=>r.stats.shortGame2plus)), borderColor: CHART_COLORS.gold, backgroundColor: CHART_COLORS.gold, tension:0.25},
+        {label:"Penalty Strokes", data: cumulativeSum(history.map(r=>r.stats.penalties)), borderColor: CHART_COLORS.red, backgroundColor: CHART_COLORS.red, tension:0.25}
       ]
     },
     options:{
@@ -1213,6 +1233,7 @@ function renderHistory(){
   if(history.length === 0){
     emptyNote.style.display = "block";
     renderTrendCharts();
+    renderCareerTotals();
     return;
   }
   emptyNote.style.display = "none";
@@ -1254,6 +1275,44 @@ function renderHistory(){
   });
 
   renderTrendCharts();
+  renderCareerTotals();
+}
+
+// Career-wide (all saved rounds combined) totals and averages — separate from the per-round
+// Round Summary card, which only ever reflects the round currently being entered.
+function renderCareerTotals(){
+  const emptyNote = document.getElementById("careerEmpty");
+  if(history.length === 0){
+    emptyNote.style.display = "block";
+    ["careerRounds","careerAvgScore","careerAvgNett","careerAvgSP","careerAvgPutts","careerTotPenalties","careerBest","careerWorst"].forEach(id=>{
+      document.getElementById(id).textContent = "-";
+    });
+    return;
+  }
+  emptyNote.style.display = "none";
+
+  const n = history.length;
+  let totScore=0, totNett=0, totSP=0, totPutts=0, totPenalties=0;
+  let best = history[0], worst = history[0];
+  history.forEach(r=>{
+    totScore += num(r.stats.totScore);
+    totNett += num(r.stats.totNett);
+    totSP += num(r.stats.totSP);
+    totPutts += num(r.stats.totPutts);
+    totPenalties += num(r.stats.penalties);
+    if(num(r.stats.totScore) < num(best.stats.totScore)) best = r;
+    if(num(r.stats.totScore) > num(worst.stats.totScore)) worst = r;
+  });
+
+  document.getElementById("careerRounds").textContent = n;
+  document.getElementById("careerAvgScore").textContent = (totScore / n).toFixed(1);
+  document.getElementById("careerAvgNett").textContent = (totNett / n).toFixed(1);
+  document.getElementById("careerAvgSP").textContent = (totSP / n).toFixed(1);
+  document.getElementById("careerAvgPutts").textContent = (totPutts / n).toFixed(1);
+  document.getElementById("careerTotPenalties").textContent = totPenalties;
+
+  document.getElementById("careerBest").textContent = `${best.stats.totScore} — ${best.course || "-"} (${best.date || "-"})`;
+  document.getElementById("careerWorst").textContent = `${worst.stats.totScore} — ${worst.course || "-"} (${worst.date || "-"})`;
 }
 
 // Read-only label lookup for the Fairway/Green select codes, used in the historical round detail view.
