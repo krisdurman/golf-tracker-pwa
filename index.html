@@ -180,7 +180,7 @@
               <th>Putts</th>
               <th>Fairway</th>
               <th>Green (GIR)</th>
-              <th>Shots &lt;50yd</th>
+              <th>Shots &lt;50</th>
               <th>Penalties</th>
             </tr>
           </thead>
@@ -246,7 +246,7 @@
           <thead>
             <tr>
               <th>#</th><th>Date</th><th>Course</th><th>Score</th><th>Putts</th>
-              <th>Par+</th><th>Dbl+</th><th>3-Putts</th><th>2+ Shots &lt;50yd</th>
+              <th>Par+</th><th>Dbl+</th><th>3-Putts</th><th>2+ Shots &lt;50</th>
               <th>Penalties</th><th>Biggest Opportunity</th><th></th>
             </tr>
           </thead>
@@ -271,7 +271,7 @@
 
       <div class="pattern-title">Biggest Score Impacts</div>
       <div class="impact-row"><span>3+ Putts</span><span class="val" id="impThreePutt">0</span></div>
-      <div class="impact-row"><span>2+ Shots (&lt;50 yds)</span><span class="val" id="impShortGame">0</span></div>
+      <div class="impact-row"><span>2+ Shots (&lt;50)</span><span class="val" id="impShortGame">0</span></div>
       <div class="impact-row"><span>Penalty Strokes</span><span class="val" id="impPenalty">0</span></div>
     </div>
 
@@ -329,7 +329,7 @@
   <div class="card">
     <h2>Score Impact Trend</h2>
     <div class="chart-wrap"><canvas id="impactTrendChart"></canvas></div>
-    <p class="small-note">3+ putts, 2+ shots inside 50 yards, and penalty strokes per round — the things most likely to be inflating your score.</p>
+    <p class="small-note">3+ putts, 2+ shots inside 50, and penalty strokes per round — the things most likely to be inflating your score.</p>
   </div>
 </div>
 
@@ -529,7 +529,7 @@ function suggestGoal(stats){
   const goals = [];
   if(stats.penalties > 0) goals.push("No penalty strokes");
   if(stats.threePutts > 0) goals.push("No 3-putts");
-  if(stats.opportunity === "Short Game" && stats.shortGame2plus > 0) goals.push("Get up-and-down from inside 50 yards");
+  if(stats.opportunity === "Short Game" && stats.shortGame2plus > 0) goals.push("Get up-and-down from inside 50");
   if(stats.opportunity === "Long Game" && (stats.fwMiss + stats.grMiss) > 0) goals.push("Hit one more fairway or green than last round");
   if(goals.length === 0) goals.push("Keep doing what's working — hold your score steady");
   return goals.slice(0,2);
@@ -716,7 +716,7 @@ function renderTrendCharts(){
       labels,
       datasets:[
         {label:"3+ Putts", data: history.map(r=>r.stats.threePutts), borderColor: CHART_COLORS.blue, backgroundColor: CHART_COLORS.blue, tension:0.25},
-        {label:"2+ Shots <50yd", data: history.map(r=>r.stats.shortGame2plus), borderColor: CHART_COLORS.gold, backgroundColor: CHART_COLORS.gold, tension:0.25},
+        {label:"2+ Shots <50", data: history.map(r=>r.stats.shortGame2plus), borderColor: CHART_COLORS.gold, backgroundColor: CHART_COLORS.gold, tension:0.25},
         {label:"Penalty Strokes", data: history.map(r=>r.stats.penalties), borderColor: CHART_COLORS.red, backgroundColor: CHART_COLORS.red, tension:0.25}
       ]
     },
