@@ -74,23 +74,41 @@ function wait(ms){ return new Promise(r=>setTimeout(r, ms)); }
 
   const hdScoreInputs = [...doc.querySelectorAll('#historyDetailBody input[data-field="score"]')];
   check("Modal score inputs are enabled (edit mode) via Continue", hdScoreInputs.every(el => !el.disabled));
+  // Score now always has a value (pre-filled to Par) — never blank — even on a round saved as
+  // Incomplete, so this is no longer a signal of "still needs playing".
+  check("Modal score inputs are never blank (pre-filled to par)", hdScoreInputs.every(el => el.value !== ""));
 
-  // ---- 7. Fill in the remaining holes via the modal and Save -> auto-promotes to Complete ----
-  hdScoreInputs.forEach((el, i)=>{
-    if(el.value === ""){
-      el.value = "4";
-      el.dispatchEvent(new window.Event("input", {bubbles:true}));
-      el.dispatchEvent(new window.Event("change", {bubbles:true}));
-    }
+  // ---- 7. Saving Changes on an Incomplete round now ASKS before promoting to Complete, instead of
+  //         silently inferring it from "every hole has a score" (which is always true now). Mock
+  //         confirm() to decline first, to prove the round stays Incomplete when the player says so.
+  window.confirm = () => false;
+  doc.getElementById("historyDetailSaveBtn").dispatchEvent(new window.Event("click", {bubbles:true}));
+  await wait(50);
+
+  const historyRowsAfterDecline = [...doc.querySelectorAll("#historyBody tr")];
+  check("Round stays Incomplete when the Complete-promotion confirm is declined",
+    !!historyRowsAfterDecline[0].querySelector(".tag.incomplete"));
+  check("Continue button still present after declining promotion", !!historyRowsAfterDecline[0].querySelector('[data-continue]'));
+
+  // ---- 8. Continue again, actually fill in the rest of the holes, and accept the promotion prompt ----
+  historyRowsAfterDecline[0].querySelector('[data-continue]').dispatchEvent(new window.Event("click", {bubbles:true}));
+  await wait(50);
+
+  const hdScoreInputs2 = [...doc.querySelectorAll('#historyDetailBody input[data-field="score"]')];
+  hdScoreInputs2.forEach((el)=>{
+    el.value = "4";
+    el.dispatchEvent(new window.Event("input", {bubbles:true}));
+    el.dispatchEvent(new window.Event("change", {bubbles:true}));
   });
   await wait(20);
 
+  window.confirm = () => true;
   doc.getElementById("historyDetailSaveBtn").dispatchEvent(new window.Event("click", {bubbles:true}));
   await wait(50);
 
   const historyRowsAfter = [...doc.querySelectorAll("#historyBody tr")];
   const completeTag = historyRowsAfter[0].querySelector(".tag.complete");
-  check("Round auto-promoted to Complete after all holes filled via modal", !!completeTag);
+  check("Round promoted to Complete after accepting the confirm prompt", !!completeTag);
   check("Continue button gone now that round is Complete", !historyRowsAfter[0].querySelector('[data-continue]'));
 
   const careerRoundsAfter = doc.getElementById("careerRounds");

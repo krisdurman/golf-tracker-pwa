@@ -98,8 +98,11 @@ function wait(ms){ return new Promise(r=>setTimeout(r, ms)); }
   // attach to `window`, so we can't just assign them from the test. Drive a real save through the UI
   // instead (enter a score, click Save) then open the Round Detail modal via the app's own function,
   // which is a top-level function declaration and therefore IS reachable on `window`.
+  // Note: Score is pre-filled to Par (default 4) now, so this must be a value that actually DIFFERS
+  // from the hole's par — otherwise it's indistinguishable from an untouched hole and the round
+  // would fail the "at least one real entry" save guard.
   const scoreInput = rows2[0].querySelector('input[data-field="score"]');
-  scoreInput.value = "4";
+  scoreInput.value = "5";
   scoreInput.dispatchEvent(new window.Event("input", {bubbles:true}));
   scoreInput.dispatchEvent(new window.Event("change", {bubbles:true}));
   await wait(20);

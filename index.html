@@ -296,6 +296,7 @@
         </div>
         <div>
           <label>Saved Courses</label>
+          <input type="text" id="libCourseFilter" placeholder="Type to filter…" style="width:260px;margin-bottom:6px;" autocomplete="off">
           <select id="libCourseSelect" style="width:260px;">
             <option value="">+ New Course</option>
           </select>
@@ -1048,6 +1049,7 @@ function getAllCourseSuggestions(){
     const key = c.name.trim().toLowerCase();
     if(!seen.has(key)){ seen.add(key); combined.push({name:c.name, region:c.region}); }
   });
+  combined.sort((a, b) => a.name.localeCompare(b.name, undefined, {sensitivity:"base"}));
   return combined;
 }
 
@@ -1092,7 +1094,23 @@ function setupCourseAutocomplete(){
 }
 
 function defaultHole(n){
-  return {hole:n, stroke:n, par:4, score:"", putts:"", fairway:"na", green:"na", shortShots:0, penalties:0};
+  // Score starts pre-filled at Par (rather than blank) so the on-screen counter begins from the
+  // expected score and the player just nudges it up/down, instead of stepping up from zero. A hole
+  // left untouched is treated as "played to par" throughout the app (see holeHasRealEntry below) —
+  // this was an explicit, confirmed product choice, not an incidental side effect.
+  const par = 4;
+  return {hole:n, stroke:n, par, score:par, putts:"", fairway:"na", green:"na", shortShots:0, penalties:0};
+}
+
+// Since Score now always has a value (defaults to Par instead of blank), "h.score !== \"\"" no longer
+// means "this hole has been played" — it's always true. This helper is the replacement signal for
+// every place that used to check for a blank score to mean "untouched": a hole only counts as having
+// a real entry once something about it actually differs from its own freshly-created defaults.
+function holeHasRealEntry(h){
+  // A blank Score (explicitly cleared by the player) is treated the same as "untouched", not as a
+  // real entry — it's less information than the pre-filled par, not more.
+  return (h.score !== "" && Number(h.score) !== Number(h.par)) || h.putts !== "" || num(h.shortShots) > 0 ||
+    num(h.penalties) > 0 || (h.fairway && h.fairway !== "na") || (h.green && h.green !== "na");
 }
 
 // Stroke Index is always 1-18, one value per hole, no repeats — build the <option> list once and reuse.
@@ -1110,12 +1128,22 @@ function parOptionsHtml(selected){
 }
 
 // Copies a saved Course Library tee-set's Par/Stroke Index onto a live holes[] array,
-// hole-by-hole, leaving Score/Putts/Fairway/Green/etc exactly as they are.
+// hole-by-hole, leaving Score/Putts/Fairway/Green/etc exactly as they are. Exception: Score is
+// pre-filled to track Par (see defaultHole), so if a hole is still sitting untouched at its OLD
+// par value, its Score is nudged to match the NEW real par too — otherwise loading a course's
+// real scorecard could leave e.g. a Par 3 showing a leftover default score of 4 (looking like a
+// bogey never played). A hole with a genuinely-entered score (one that already differs from its
+// old par) is never touched here.
 function applyScorecardToHoles(targetHoles, teeSet){
   teeSet.holes.forEach((ch, i) => {
     if(targetHoles[i]){
-      targetHoles[i].par = Number(ch.par);
-      targetHoles[i].stroke = Number(ch.stroke);
+      const h = targetHoles[i];
+      const oldPar = Number(h.par);
+      const newPar = Number(ch.par);
+      const untouched = h.score !== "" && Number(h.score) === oldPar;
+      h.par = newPar;
+      h.stroke = Number(ch.stroke);
+      if(untouched) h.score = newPar;
     }
   });
 }
@@ -1190,7 +1218,7 @@ function tryAutoFillCourseScorecard(opts){
 
   const course = findCourse(name);
   const teeSet = course ? pickBestTeeSet(course, teeName, gender) : null;
-  const hasAnyScore = holes.some(h => h.score !== "");
+  const hasAnyScore = holes.some(holeHasRealEntry);
 
   if(!teeSet){
     updateCourseRatingNote(null, null);
@@ -1278,11 +1306,26 @@ function onLibFieldChange(e){
 
 // Rebuilds the "Saved Courses" dropdown from courseLibrary; optionally re-selects a given
 // course/holeCount pair (used right after saving, so the form stays pointed at what was saved).
+// Renders the Saved Courses dropdown alphabetically (option VALUE is always the course's real
+// index into courseLibrary, so delete/load-into-form logic below is unaffected by sorting or
+// filtering the DISPLAY order). The paired #libCourseFilter text input narrows the list down to
+// names containing whatever's typed — with 500+ national courses now in the library, scrolling
+// an unsorted, unfiltered dropdown to find one wasn't workable.
 function populateLibCourseSelect(selectName){
   const select = document.getElementById("libCourseSelect");
   if(!select) return;
+  const filterEl = document.getElementById("libCourseFilter");
+  // When jumping straight to a just-saved/imported course, ignore whatever's currently typed in
+  // the filter box so that course is guaranteed to be visible and selectable.
+  const query = (selectName ? "" : (filterEl ? filterEl.value : "")).trim().toLowerCase();
+
+  const entries = courseLibrary
+    .map((c, i) => ({ c, i }))
+    .filter(({c}) => !query || c.name.toLowerCase().includes(query))
+    .sort((a, b) => a.c.name.localeCompare(b.c.name, undefined, {sensitivity:"base"}));
+
   const options = ['<option value="">+ New Course</option>'];
-  courseLibrary.forEach((c, i) => {
+  entries.forEach(({c, i}) => {
     const info = (c.teeSets && c.teeSets.length)
       ? ` — ${c.teeSets.length} tee-set${c.teeSets.length > 1 ? "s" : ""}`
       : " — no scorecard yet";
@@ -1377,7 +1420,7 @@ let roundDirty = false; // true whenever the live Round Entry table has changes 
 function updateUnsavedBanner(){
   const banner = document.getElementById("unsavedBanner");
   if(!banner) return;
-  const hasAnyScore = holes.some(h => h.score !== "");
+  const hasAnyScore = holes.some(holeHasRealEntry);
   banner.classList.toggle("show", roundDirty && hasAnyScore);
 }
 
@@ -1491,12 +1534,21 @@ function onHoleFieldChange(e){
     return;
   }
 
-  holes[idx][field] = val;
-  markRoundDirty();
   if(field === "par"){
+    // Score tracks Par by default (see defaultHole/applyScorecardToHoles) — if this hole's Score is
+    // still sitting untouched at the OLD par, nudge it to the new one too, same as loading a saved
+    // scorecard would. A Score the player has actually changed away from the old par is left alone.
+    const h = holes[idx];
+    const oldPar = Number(h.par);
+    const untouched = h.score !== "" && Number(h.score) === oldPar;
+    h.par = val;
+    if(untouched) h.score = val;
+    markRoundDirty();
     renderHoleTable(); // re-render to enable/disable fairway select for par 3
     return;
   }
+  holes[idx][field] = val;
+  markRoundDirty();
   updateTotalsAndSummary();
 }
 
@@ -1901,7 +1953,7 @@ function renderHistory(){
     const displayNum = visible.length - revPos; // 1-based position within this player's own rounds
     const isIncomplete = r.status === "incomplete";
     const totalHoles = (r.holes || []).length;
-    const holesScored = (r.holes || []).filter(h => h.score !== "").length;
+    const holesScored = (r.holes || []).filter(holeHasRealEntry).length;
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${displayNum}</td>
@@ -2088,11 +2140,20 @@ function onHistoryDetailFieldChange(e){
     return;
   }
 
-  historyDetailHoles[idx][field] = val;
   if(field === "par"){
+    // Same untouched-score-tracks-par nudge as onHoleFieldChange in live Round Entry.
+    const h = historyDetailHoles[idx];
+    const oldPar = Number(h.par);
+    const untouched = h.score !== "" && Number(h.score) === oldPar;
+    h.par = val;
+    if(untouched) h.score = val;
     renderHistoryDetailBody(); // re-render to enable/disable fairway select for par 3
     setHistoryDetailEditable(historyDetailEditing); // re-render wipes disabled state, so re-apply it
+    updateHistoryDetailTotals();
+    return;
   }
+
+  historyDetailHoles[idx][field] = val;
   updateHistoryDetailTotals();
 }
 
@@ -2231,7 +2292,7 @@ document.getElementById("saveScorecardBtn").addEventListener("click", ()=>{
 // Best-effort reminder for regular browser tabs — iOS PWAs in standalone mode don't reliably
 // fire beforeunload, so the on-screen "unsaved scores" banner above is the primary safety net.
 window.addEventListener("beforeunload", (e)=>{
-  const hasAnyScore = holes.some(h => h.score !== "");
+  const hasAnyScore = holes.some(holeHasRealEntry);
   if(roundDirty && hasAnyScore){
     e.preventDefault();
     e.returnValue = "";
@@ -2274,10 +2335,12 @@ document.getElementById("historyDetailSaveBtn").addEventListener("click", ()=>{
     holes: JSON.parse(JSON.stringify(historyDetailHoles))
   };
   updated.stats = computeStats(updated.holes, num(hc));
-  // Finished filling in the rest of an Incomplete round from this modal? Promote it to Complete
-  // automatically. (Never auto-demotes an already-Complete round, even if a score gets cleared —
-  // that's the player's call, made explicitly via Save as Incomplete.)
-  if(updated.status === "incomplete" && updated.holes.every(h => h.score !== "")){
+  // Score always has a value now (defaults to Par), so "every hole has a score" is no longer a
+  // reliable signal that the round has actually been finished — it's true from the moment the
+  // round was created. A round only ever becomes Complete when the player explicitly says so, so
+  // ask here rather than silently inferring it from hole data. (Never auto-demotes an already-
+  // Complete round — that's the player's call, made explicitly via Save as Incomplete.)
+  if(updated.status === "incomplete" && confirm("Mark this round as Complete now? Choose Cancel to keep saving it as Incomplete.")){
     updated.status = "complete";
   }
   history[idx] = updated;
@@ -2355,7 +2418,10 @@ function buildRoundRecord(status){
 }
 
 function commitRound(status, savedMessage){
-  const scoredHoles = holes.filter(h=>h.score !== "");
+  // Score always has a value now (defaults to Par), so this can no longer check for a blank score —
+  // it checks for at least one hole that's actually been engaged with, so an accidental tap on
+  // Save/Save as Incomplete on a completely untouched scorecard still gets caught.
+  const scoredHoles = holes.filter(holeHasRealEntry);
   if(scoredHoles.length === 0){
     alert(`Enter at least one hole score before ${status === "incomplete" ? "saving as incomplete" : "saving"}.`);
     return;
@@ -2398,6 +2464,11 @@ document.getElementById("libCourseSelect").addEventListener("change", (e)=>{
   const idx = e.target.value;
   if(idx === ""){ resetLibForm(); return; }
   loadLibCourseIntoForm(Number(idx));
+});
+
+// Type a few characters to narrow the Saved Courses dropdown down from 500+ national entries.
+document.getElementById("libCourseFilter").addEventListener("input", ()=>{
+  populateLibCourseSelect();
 });
 
 document.getElementById("libHoleCount").addEventListener("change", (e)=>{
