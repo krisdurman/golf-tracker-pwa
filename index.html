@@ -155,6 +155,20 @@
     background:#fff8ea;border:1px solid var(--gold);border-radius:10px;
     font-size:0.78rem;color:var(--ink);
   }
+  .coach-tip{
+    display:none;max-width:520px;margin:0 auto 16px auto;padding:12px 12px 14px 12px;
+    background:#eef2fb;border:1px solid var(--blue,#33409e);border-radius:10px;
+    color:var(--ink);position:relative;flex-direction:column;gap:8px;
+  }
+  .coach-tip.show{display:flex;}
+  .coach-tip-img{width:100%;height:auto;display:block;border-radius:8px;border:1px solid var(--line);}
+  .coach-tip-text{flex:1 1 auto;min-width:0;padding-right:22px;}
+  .coach-tip h3{margin:0 0 4px 0;font-size:0.92rem;color:#33409e;}
+  .coach-tip p{margin:0;font-size:0.85rem;line-height:1.4;}
+  .coach-tip button{
+    position:absolute;top:8px;right:10px;background:rgba(255,255,255,0.85);border:none;cursor:pointer;
+    font-size:1rem;color:var(--muted);line-height:1;padding:4px 7px;border-radius:6px;
+  }
   .profile-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px;margin-bottom:16px;padding-bottom:16px;border-bottom:1px dashed var(--line);}
   .profile-row label{font-size:0.78rem;color:var(--muted);display:block;margin-bottom:4px;}
   .profile-row select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-size:0.9rem;background:#fff;color:var(--ink);}
@@ -207,6 +221,15 @@
 
 <div class="disclaimer-bar">
   ⚠️ <strong>Beta software — use at your own risk.</strong> This app is provided for informal, recreational use only, with no warranty as to the accuracy of scoring, handicap, or Stableford calculations.
+</div>
+
+<div class="coach-tip" id="coachTip">
+  <button type="button" id="coachTipDismissBtn" aria-label="Dismiss">✕</button>
+  <img class="coach-tip-img" id="coachTipImg" src="" alt="">
+  <div class="coach-tip-text">
+    <h3 id="coachTipTitle">Coach's Tip</h3>
+    <p id="coachTipBody"></p>
+  </div>
 </div>
 
 <div class="layout">
@@ -604,6 +627,38 @@ const STORAGE_KEY = "golfTrackerHistoryV1";
 const PROFILES_KEY = "golfTrackerProfilesV1";
 const COURSES_KEY = "golfTrackerCoursesV1";
 const COURSES_SEEDED_KEY = "golfTrackerCoursesSeededV2"; // v2: national HNA-sourced seed (was Gauteng-only) — bumped so existing installs re-merge
+
+// One-way "Coach's Tip" broadcast: no accounts, no server, no usage data collected from anyone —
+// this card shows one image per tip, plus an optional short caption. To post a new tip: drop a
+// new image file next to index.html, then update `image`, `imageAlt`, `id` (so it reappears even
+// for players who dismissed an earlier one) and the caption fields below, then ship a new version
+// — everyone gets it the same way they get any other update, via the update-available banner.
+// `id` doesn't need to be a date; it just needs to change whenever the content changes. Giving
+// each tip's image its own filename (rather than overwriting one fixed name) avoids any chance of
+// a phone showing a stale cached picture under an old caption after an update.
+const COACH_TIP = {
+  id: "2026-07-welcome",
+  image: "coach-tip-2026-07-welcome.jpg",
+  imageAlt: "Instructional graphic titled 'Don't hold your head down — for crisp irons: ball first, turf second.' Four numbered steps: 1) Set up — ball near centre, pressure balanced. 2) Shift — pressure moves into the lead foot. 3) Strike — chest stays over the ball, hands lead. 4) Exit — divot starts after the ball, turn through. Highlighted tip: brush the grass 5-8cm after the ball. Warning note: stay in posture, don't freeze your head.",
+  title: "Coach's Tip: Ball First, Turf Second",
+  body: "Don't hold your head down through impact — let your chest and pressure move toward the target as you strike. The divot should start just after the ball, not before it."
+};
+const COACH_TIP_DISMISSED_KEY = "golfTrackerCoachTipDismissedIdV1";
+
+// Shows the current Coach's Tip unless this exact tip id has already been dismissed on this
+// device. A NEW tip (different id) always reappears, even for someone who dismissed a previous one.
+function renderCoachTip(){
+  const card = document.getElementById("coachTip");
+  if(!card) return;
+  let dismissedId = null;
+  try{ dismissedId = localStorage.getItem(COACH_TIP_DISMISSED_KEY); }catch(e){ dismissedId = null; }
+  if(dismissedId === COACH_TIP.id){ card.classList.remove("show"); return; }
+  const img = document.getElementById("coachTipImg");
+  if(img){ img.src = COACH_TIP.image; img.alt = COACH_TIP.imageAlt || ""; }
+  document.getElementById("coachTipTitle").textContent = COACH_TIP.title;
+  document.getElementById("coachTipBody").textContent = COACH_TIP.body;
+  card.classList.add("show");
+}
 
 // Course Library: each course can have several tee-sets (e.g. Men's Championship, Ladies, Club,
 // Executive) — real scorecards vary Par/Stroke Index and distance by tee, not just by hole count.
@@ -2214,6 +2269,11 @@ document.getElementById("deleteSavedCourseBtn").addEventListener("click", ()=>{
   alert(`Deleted "${course.name}" from the Course Library.`);
 });
 
+document.getElementById("coachTipDismissBtn").addEventListener("click", ()=>{
+  try{ localStorage.setItem(COACH_TIP_DISMISSED_KEY, COACH_TIP.id); }catch(e){}
+  document.getElementById("coachTip").classList.remove("show");
+});
+
 // init
 loadHistory();
 loadProfiles();
@@ -2223,6 +2283,7 @@ buildHoles(18);
 renderHoleTable();
 renderHistory();
 setupCourseAutocomplete();
+renderCoachTip();
 document.getElementById("roundDate").value = new Date().toISOString().slice(0,10);
 
 // Shows the "a new version is ready" banner. Split out as its own function (rather than inlined
