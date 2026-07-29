@@ -140,6 +140,12 @@
     font-size:0.8rem;font-weight:600;
   }
   .unsaved-banner.show{display:block;}
+  .update-banner{
+    display:none;max-width:1400px;margin:0 auto 16px auto;padding:10px 14px;border-radius:8px;
+    background:#eaf6ee;border:1px solid var(--green-light);color:var(--green-dark);
+    font-size:0.85rem;font-weight:600;align-items:center;gap:10px;flex-wrap:wrap;
+  }
+  .update-banner.show{display:flex;}
   .chart-wrap{position:relative;height:220px;margin-top:8px;}
   .chart-wrap.small{height:190px;}
   .trends-layout{display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:1400px;margin:0 auto;}
@@ -192,6 +198,12 @@
 
 <h1>⛳ Golf Game Improvement Tracker</h1>
 <p class="subtitle">Log each hole, get an instant round summary and shot-pattern breakdown, and track your improvement round over round.</p>
+
+<div class="update-banner" id="updateBanner">
+  <span>🔄 A new version of the app has downloaded and is ready.</span>
+  <button type="button" id="updateBannerBtn" class="btn secondary" style="padding:5px 10px;font-size:0.75rem;">Refresh Now</button>
+  <button type="button" id="updateBannerDismissBtn" class="btn secondary" style="padding:5px 10px;font-size:0.75rem;">Not Now</button>
+</div>
 
 <div class="disclaimer-bar">
   ⚠️ <strong>Beta software — use at your own risk.</strong> This app is provided for informal, recreational use only, with no warranty as to the accuracy of scoring, handicap, or Stableford calculations.
@@ -2213,9 +2225,58 @@ renderHistory();
 setupCourseAutocomplete();
 document.getElementById("roundDate").value = new Date().toISOString().slice(0,10);
 
+// Shows the "a new version is ready" banner. Split out as its own function (rather than inlined
+// into the registration code below) so a test harness can trigger it directly without needing a
+// real service worker lifecycle, which jsdom can't simulate.
+function showUpdateBanner(){
+  const banner = document.getElementById("updateBanner");
+  if(banner) banner.classList.add("show");
+}
+
+document.getElementById("updateBannerBtn").addEventListener("click", ()=>{
+  // Reuse the same "is there real, unsaved round data" signal as the unsaved-changes banner and
+  // beforeunload guard, so refreshing to pick up the update can't silently wipe an in-progress
+  // round — holes[] only lives in memory until Save / Save as Incomplete is tapped.
+  const hasAnyScore = holes.some(holeHasRealEntry);
+  if(roundDirty && hasAnyScore){
+    if(!confirm('You have unsaved scores in the current round. Refreshing now will lose them unless you tap "Save Round to History" or "Save as Incomplete" first. Refresh anyway?')) return;
+  }
+  window.location.reload();
+});
+
+document.getElementById("updateBannerDismissBtn").addEventListener("click", ()=>{
+  document.getElementById("updateBanner").classList.remove("show");
+});
+
 if("serviceWorker" in navigator){
   window.addEventListener("load", ()=>{
-    navigator.serviceWorker.register("service-worker.js").catch(err=>console.warn("SW registration failed:", err));
+    navigator.serviceWorker.register("service-worker.js").then(reg => {
+      // A new worker installing means a new version of the app has already downloaded. This app's
+      // service worker calls self.skipWaiting() unconditionally (see service-worker.js), so the
+      // new worker activates itself right away — there's no "waiting" worker to prod with a
+      // postMessage. What we DO need to do is tell the player a new version is ready, rather than
+      // silently reloading out from under them: an unannounced reload could wipe an in-progress,
+      // not-yet-saved round, so this only ever offers a refresh, never forces one.
+      reg.addEventListener("updatefound", () => {
+        const newWorker = reg.installing;
+        if(!newWorker) return;
+        newWorker.addEventListener("statechange", () => {
+          // "installed" while a controller already exists means this is an update — the very
+          // first install on a device also passes through "installed", but with no controller yet.
+          if(newWorker.state === "installed" && navigator.serviceWorker.controller){
+            showUpdateBanner();
+          }
+        });
+      });
+
+      // iOS home-screen PWAs don't always check for a new service-worker.js as eagerly as a
+      // regular browser tab does — nudge a check whenever the app is brought back to the
+      // foreground, so a new version is noticed sooner rather than whenever iOS next checks on
+      // its own.
+      document.addEventListener("visibilitychange", () => {
+        if(document.visibilityState === "visible") reg.update().catch(()=>{});
+      });
+    }).catch(err=>console.warn("SW registration failed:", err));
   });
 }
 </script>
