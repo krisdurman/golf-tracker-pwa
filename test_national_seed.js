@@ -17,35 +17,25 @@ function wait(ms){ return new Promise(r=>setTimeout(r, ms)); }
   const results = [];
   function check(name, cond){ results.push({name, pass: !!cond}); }
 
-  window.populateLibCourseSelect();
-  const options = [...doc.getElementById("libCourseSelect").options].map(o=>o.textContent);
-  check("National seed populated on first load", options.length > 400);
+  // getCourseLibrarySnapshot() is a read-only, no-UI helper — the app's former "Course Library
+  // (Admin)" dropdown used to double as a convenient way to inspect the raw library contents,
+  // but that whole card was removed once bulk course-data updates became a code-level,
+  // regenerate-the-seed workflow rather than an in-app one. This helper keeps that same
+  // introspection available for tooling/tests without bringing back any UI.
+  let snapshot = window.getCourseLibrarySnapshot();
+  check("National seed populated on first load", snapshot.length > 400);
 
   // Breadth check: clubs outside Gauteng should now be present (previously this app only ever
   // shipped Gauteng data).
-  check("Adelaide Golf Club (Border region) present", options.some(t => t.toLowerCase().includes("adelaide golf club")));
-  check("A Western/Southern Cape-style club is present", options.some(t => /stellenbosch|george golf club|mossel bay/i.test(t)));
+  check("Adelaide Golf Club (Border region) present", snapshot.some(c => c.name.toLowerCase().includes("adelaide golf club")));
+  check("A Western/Southern Cape-style club is present", snapshot.some(c => /stellenbosch|george golf club|mossel bay/i.test(c.name)));
 
   // Royal Johannesburg should now carry FULL official data across multiple layouts, each with
   // several tee-sets (vs. the old 1-layout/1-tee-set placeholder-derived seed).
-  const royalOptions = options.filter(t => t.toLowerCase().includes("royal johannesburg"));
-  check("Royal Johannesburg has multiple layout entries", royalOptions.length >= 2);
+  const royalEntries = snapshot.filter(c => c.name.toLowerCase().includes("royal johannesburg"));
+  check("Royal Johannesburg has multiple layout entries", royalEntries.length >= 2);
 
-  const eastCourse = window.findCourse("Royal Johannesburg & Kensington Golf Club — Royal Jhb East Course") ||
-                      [...royalOptions].map(t => window.findCourse(t.split(" — ").length > 1 ? t.replace(/\s*—\s*\d+.*$/, "").trim() : t)).find(Boolean);
-  // Fall back: just grab any Royal Johannesburg course directly via a scan, since exact naming
-  // punctuation/casing from the live site may differ slightly from any prior assumption.
-  const anyRoyal = royalOptions.length ? window.findCourse(royalOptions[0].split(" — 2")[0].split(" — no")[0].replace(/ — .*/, (m)=>{
-    // reconstruct exact name (before the " — N tee-sets" suffix populateLibCourseSelect appends)
-    return "";
-  })) : null;
-
-  // populateLibCourseSelect labels are "<name> — N tee-set(s)" or "<name> — no scorecard yet";
-  // strip that suffix to get the real course name, then look it up directly.
-  function realNameFromOption(optionText){
-    return optionText.replace(/\s+—\s+(\d+\s+tee-sets?|no scorecard yet)$/i, "");
-  }
-  const royalRealNames = royalOptions.map(realNameFromOption);
+  const royalRealNames = royalEntries.map(c => c.name);
   let royalHasMultiTee = false;
   let royalHasBothGenders = false;
   for(const n of royalRealNames){
@@ -64,11 +54,12 @@ function wait(ms){ return new Promise(r=>setTimeout(r, ms)); }
   check("Sample tee-set holes have numeric par 3-5", sampleTee.holes.every(h => h.par >= 3 && h.par <= 5));
   check("Sample tee-set holes have unique Stroke Index 1-18", new Set(sampleTee.holes.map(h=>h.stroke)).size === 18);
 
-  // Re-running loadCourses() must not duplicate anything (COURSES_SEEDED_KEY guard).
-  const before = options.length;
+  // Re-running loadCourses() must not duplicate anything (COURSES_SEEDED_KEY guard). Uses the raw
+  // snapshot (not the deduped-by-name getAllCourseSuggestions() list) so an actual duplicate entry
+  // in courseLibrary itself would still show up here.
+  const before = snapshot.length;
   window.loadCourses();
-  window.populateLibCourseSelect();
-  const after = [...doc.getElementById("libCourseSelect").options].length;
+  const after = window.getCourseLibrarySnapshot().length;
   check("Re-running loadCourses() does not duplicate the national seed", before === after);
 
   // Upgrade-placeholder logic: simulate an existing user who only had the OLD thin Gauteng seed

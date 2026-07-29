@@ -271,54 +271,6 @@
     </div>
 
     <div class="card">
-      <h2>Course Library <span style="font-size:0.72rem;font-weight:500;color:var(--muted);">(Admin)</span></h2>
-      <p class="small-note" style="margin-top:-6px;">Add a course that isn't in the suggested list, or set up its Par &amp; Stroke Index scorecard once here so Round Entry can auto-fill it every time that course is played — no re-typing Stroke Index on the tee. Courses with several tees (Men's/Ladies, Club/Championship, etc.) auto-load the right one from the Gender and Tee Marker fields above.</p>
-
-      <div class="round-meta" style="border-bottom:1px dashed var(--line);padding-bottom:14px;">
-        <div>
-          <label>Import Courses from CSV</label>
-          <input type="file" id="csvImportFile" accept=".csv,text/csv" style="width:230px;">
-        </div>
-      </div>
-      <p class="small-note" id="csvImportStatus" style="margin-top:-6px;">Expected columns: club_name, course_layout, union, city, tee_name, tee_colour, player_category, hole, par, stroke_index, distance_metres, course_rating, slope_rating, scorecard_status. Re-importing a course replaces its previous data.</p>
-
-      <div class="round-meta">
-        <div class="course-field-wrap">
-          <label>Course Name</label>
-          <input type="text" id="libCourseName" placeholder="Course name" style="width:220px;" autocomplete="off">
-        </div>
-        <div>
-          <label>Holes</label>
-          <select id="libHoleCount">
-            <option value="18" selected>18</option>
-            <option value="9">9</option>
-          </select>
-        </div>
-        <div>
-          <label>Saved Courses</label>
-          <input type="text" id="libCourseFilter" placeholder="Type to filter…" style="width:260px;margin-bottom:6px;" autocomplete="off">
-          <select id="libCourseSelect" style="width:260px;">
-            <option value="">+ New Course</option>
-          </select>
-        </div>
-      </div>
-      <p class="small-note" id="libMultiTeeNote" style="display:none;"></p>
-      <div class="table-scroll">
-        <table id="libScorecardTable">
-          <thead>
-            <tr><th class="hole-col">Hole</th><th>Par</th><th>Stroke Index</th></tr>
-          </thead>
-          <tbody id="libScorecardBody"></tbody>
-        </table>
-      </div>
-      <div class="btn-row">
-        <button class="btn" id="saveCourseBtn" type="button">Save Course</button>
-        <button class="btn danger" id="deleteCourseBtn" type="button">Delete Course</button>
-      </div>
-      <p class="small-note">Saved courses show up in the Course suggestions below and their Par/Stroke Index load automatically once you pick that course, Gender, and Tee Marker in Round Entry / Player Profile.</p>
-    </div>
-
-    <div class="card">
       <h2>Round Entry</h2>
       <div class="round-meta">
         <div>
@@ -342,6 +294,7 @@
       <div class="btn-row" style="margin-top:0;margin-bottom:4px;">
         <button class="btn secondary" id="loadScorecardBtn" type="button" style="padding:5px 10px;font-size:0.75rem;">📋 Load Saved Scorecard</button>
         <button class="btn secondary" id="saveScorecardBtn" type="button" style="padding:5px 10px;font-size:0.75rem;">💾 Remember This Scorecard</button>
+        <button class="btn secondary" id="deleteSavedCourseBtn" type="button" style="padding:5px 10px;font-size:0.75rem;">🗑️ Delete Saved Course</button>
       </div>
       <p class="small-note" id="courseRatingNote" style="margin-top:0;margin-bottom:14px;min-height:1em;"></p>
 
@@ -712,8 +665,9 @@ function seedCoursesIfMissing(seedCourses){
   return added;
 }
 
-// Explicit admin CSV import: adds new courses and REPLACES any existing course of the same name
-// (a deliberate re-import is expected to supersede whatever was there, e.g. a name-only stub).
+// Adds new courses and REPLACES any existing course of the same name (used when the seed data
+// itself needs a course force-refreshed rather than merge-upgraded — see seedCoursesIfMissing
+// above for the normal, non-destructive path).
 function importCourses(newCourses){
   let added = 0, updated = 0;
   newCourses.forEach(nc => {
@@ -732,6 +686,12 @@ function findCourse(name){
   return courseLibrary.find(c => c.name.trim().toLowerCase() === key) || null;
 }
 
+// Read-only introspection helper — no UI, no side effects. Lets tooling/tests inspect the real
+// Course Library contents (including any accidental duplicates) without a dedicated admin screen.
+function getCourseLibrarySnapshot(){
+  return courseLibrary.map(c => ({ name: c.name, teeSetCount: (c.teeSets || []).length }));
+}
+
 // Picks the tee-set that best matches the currently selected Tee Marker + Gender, falling back
 // sensibly (tee name only, then gender only, then just the first tee-set) rather than finding
 // nothing just because of a small mismatch.
@@ -746,119 +706,6 @@ function pickBestTeeSet(course, teeName, gender){
   if(match) return match;
   return course.teeSets[0];
 }
-
-// ---- CSV import (Admin) ----
-// Minimal RFC4180-ish CSV parser: handles quoted fields, embedded commas/newlines inside quotes,
-// and doubled "" escaped quotes — safer than a plain split(",") for source_url/notes columns that
-// may contain commas in future provincial files.
-function parseCsvRows(text){
-  const rows = [];
-  let row = [], field = "", inQuotes = false;
-  for(let i = 0; i < text.length; i++){
-    const c = text[i];
-    if(inQuotes){
-      if(c === '"'){
-        if(text[i+1] === '"'){ field += '"'; i++; }
-        else inQuotes = false;
-      } else field += c;
-    } else {
-      if(c === '"') inQuotes = true;
-      else if(c === ','){ row.push(field); field = ""; }
-      else if(c === '\n'){ row.push(field); rows.push(row); row = []; field = ""; }
-      else if(c === '\r'){ /* ignore; \n follows in CRLF */ }
-      else field += c;
-    }
-  }
-  if(field.length || row.length){ row.push(field); rows.push(row); }
-  return rows.filter(r => r.some(cell => cell.trim() !== ""));
-}
-
-// Groups parsed CSV rows into courses -> tee-sets -> holes, matching the schema documented under
-// the file picker (club_name, course_layout, union, city, tee_name, tee_colour, player_category,
-// hole, par, stroke_index, distance_metres, course_rating, slope_rating, scorecard_status).
-// A club appears once per distinct course_layout it has, and its display name only gets a
-// " — Layout" suffix when that club has more than one layout in this file (avoids a redundant
-// "Pretoria Golf Club — Pretoria" for single-course clubs).
-function csvRowsToCourses(rows){
-  if(rows.length === 0) return { courses: [], extractedRowCount: 0 };
-  const header = rows[0].map(h => h.trim().toLowerCase());
-  const idx = {};
-  header.forEach((h,i) => { idx[h] = i; });
-  const required = ["club_name","tee_name","tee_colour","player_category","hole","par","stroke_index","scorecard_status"];
-  const missing = required.filter(k => !(k in idx));
-  if(missing.length) throw new Error(`CSV is missing expected column(s): ${missing.join(", ")}`);
-
-  const dataRows = rows.slice(1).filter(r => r.some(c => c.trim() !== ""));
-  const get = (r, key) => (idx[key] !== undefined ? (r[idx[key]] || "") : "");
-
-  const layoutsByClub = {};
-  dataRows.forEach(r => {
-    const club = get(r, "club_name").trim();
-    const layout = get(r, "course_layout").trim();
-    if(!club) return;
-    if(!layoutsByClub[club]) layoutsByClub[club] = new Set();
-    if(layout) layoutsByClub[club].add(layout);
-  });
-
-  function courseName(club, layout){
-    club = club.trim(); layout = (layout || "").trim();
-    if(layoutsByClub[club] && layoutsByClub[club].size > 1 && layout) return `${club} — ${layout}`;
-    return club;
-  }
-
-  const courses = new Map();
-  let extractedRowCount = 0;
-
-  dataRows.forEach(r => {
-    const club = get(r, "club_name").trim();
-    if(!club) return;
-    const layout = get(r, "course_layout").trim();
-    const name = courseName(club, layout);
-    const status = get(r, "scorecard_status").trim();
-
-    if(!courses.has(name)){
-      courses.set(name, { name, union: get(r,"union").trim(), city: get(r,"city").trim(), teeSets: new Map() });
-    }
-    if(status !== "Extracted") return;
-
-    const teeName = get(r, "tee_name").trim();
-    const teeColour = get(r, "tee_colour").trim();
-    const gender = get(r, "player_category").trim();
-    const holeNum = Number(get(r, "hole"));
-    const par = Number(get(r, "par"));
-    const stroke = Number(get(r, "stroke_index"));
-    if(!holeNum || !par || !stroke) return; // skip malformed rows rather than corrupting the scorecard
-
-    const distRaw = get(r, "distance_metres");
-    const crRaw = get(r, "course_rating");
-    const srRaw = get(r, "slope_rating");
-    const dist = distRaw !== "" ? Number(distRaw) : NaN;
-    const cr = crRaw !== "" ? Number(crRaw) : NaN;
-    const sr = srRaw !== "" ? Number(srRaw) : NaN;
-
-    const teeKey = `${teeName}|${teeColour}|${gender}`;
-    const teeSets = courses.get(name).teeSets;
-    if(!teeSets.has(teeKey)){
-      teeSets.set(teeKey, {
-        teeName, teeColour, gender,
-        courseRating: isNaN(cr) ? null : cr,
-        slopeRating: isNaN(sr) ? null : sr,
-        holes: []
-      });
-    }
-    teeSets.get(teeKey).holes.push({ hole: holeNum, par, stroke, distance: isNaN(dist) ? null : dist });
-    extractedRowCount++;
-  });
-
-  const out = [];
-  courses.forEach(c => {
-    const teeSetList = [];
-    c.teeSets.forEach(ts => { ts.holes.sort((a,b) => a.hole - b.hole); teeSetList.push(ts); });
-    out.push({ name: c.name, union: c.union, city: c.city, teeSets: teeSetList });
-  });
-  return { courses: out, extractedRowCount };
-}
-
 
 let profiles = [];
 
@@ -1255,133 +1102,6 @@ function onRoundCourseSelected(){
   const name = document.getElementById("roundCourse").value;
   updateTeeMarkerOptionsForCourse(findCourse(name));
   tryAutoFillCourseScorecard({silent:true});
-}
-
-// ---- Course Library (Admin) card: a small standalone Par/Stroke Index scorecard editor ----
-// Deliberately separate state from the live round's `holes` — this card is for setting up or
-// correcting a course's data, not for entering a round.
-let libHoles = [];
-
-function buildLibHoles(count){
-  libHoles = [];
-  for(let i=1;i<=count;i++) libHoles.push({hole:i, par:4, stroke:i});
-}
-
-function renderLibScorecardTable(){
-  const body = document.getElementById("libScorecardBody");
-  if(!body) return;
-  body.innerHTML = libHoles.map((h, idx) => `
-    <tr>
-      <td>${h.hole}</td>
-      <td><select data-idx="${idx}" data-field="par">${parOptionsHtml(h.par)}</select></td>
-      <td><select data-idx="${idx}" data-field="stroke">${strokeOptionsHtml(h.stroke)}</select></td>
-    </tr>
-  `).join("");
-  body.querySelectorAll("select").forEach(el=>{
-    el.addEventListener("change", onLibFieldChange);
-  });
-}
-
-function onLibFieldChange(e){
-  const idx = Number(e.target.dataset.idx);
-  const field = e.target.dataset.field;
-  const val = Number(e.target.value);
-
-  if(field === "stroke"){
-    const prevVal = Number(libHoles[idx].stroke);
-    const otherIdx = libHoles.findIndex((h, i) => i !== idx && Number(h.stroke) === val);
-    libHoles[idx].stroke = val;
-    if(otherIdx !== -1){
-      // Two holes can never share a Stroke Index — instead of blocking the edit, the hole that
-      // used to hold this value takes over the one this hole just gave up. That makes any
-      // reassignment (including swaps) a single click in either direction, no dead ends.
-      libHoles[otherIdx].stroke = prevVal;
-      renderLibScorecardTable();
-    }
-    return;
-  }
-
-  libHoles[idx][field] = val;
-}
-
-// Rebuilds the "Saved Courses" dropdown from courseLibrary; optionally re-selects a given
-// course/holeCount pair (used right after saving, so the form stays pointed at what was saved).
-// Renders the Saved Courses dropdown alphabetically (option VALUE is always the course's real
-// index into courseLibrary, so delete/load-into-form logic below is unaffected by sorting or
-// filtering the DISPLAY order). The paired #libCourseFilter text input narrows the list down to
-// names containing whatever's typed — with 500+ national courses now in the library, scrolling
-// an unsorted, unfiltered dropdown to find one wasn't workable.
-function populateLibCourseSelect(selectName){
-  const select = document.getElementById("libCourseSelect");
-  if(!select) return;
-  const filterEl = document.getElementById("libCourseFilter");
-  // When jumping straight to a just-saved/imported course, ignore whatever's currently typed in
-  // the filter box so that course is guaranteed to be visible and selectable.
-  const query = (selectName ? "" : (filterEl ? filterEl.value : "")).trim().toLowerCase();
-
-  const entries = courseLibrary
-    .map((c, i) => ({ c, i }))
-    .filter(({c}) => !query || c.name.toLowerCase().includes(query))
-    .sort((a, b) => a.c.name.localeCompare(b.c.name, undefined, {sensitivity:"base"}));
-
-  const options = ['<option value="">+ New Course</option>'];
-  entries.forEach(({c, i}) => {
-    const info = (c.teeSets && c.teeSets.length)
-      ? ` — ${c.teeSets.length} tee-set${c.teeSets.length > 1 ? "s" : ""}`
-      : " — no scorecard yet";
-    options.push(`<option value="${i}">${c.name}${info}</option>`);
-  });
-  select.innerHTML = options.join("");
-  if(selectName){
-    const idx = courseLibrary.findIndex(c => c.name === selectName);
-    if(idx >= 0) select.value = String(idx);
-  }
-}
-
-// Loads a saved course into the manual editor. Courses with a single tee-set (whether hand-added
-// or a one-tee CSV import) are fully editable. Courses with several tee-sets (typically bulk CSV
-// imports) are shown read-only — editing here would collapse all of them down to one, so those
-// can only be viewed or deleted; re-import the CSV to update them instead.
-function loadLibCourseIntoForm(idx){
-  const c = courseLibrary[idx];
-  if(!c) return;
-  document.getElementById("libCourseName").value = c.name;
-  const note = document.getElementById("libMultiTeeNote");
-  const saveBtn = document.getElementById("saveCourseBtn");
-
-  if(!c.teeSets || c.teeSets.length === 0){
-    note.style.display = "none";
-    saveBtn.disabled = false;
-    const holeCount = Number(document.getElementById("libHoleCount").value) || 18;
-    buildLibHoles(holeCount);
-    renderLibScorecardTable();
-    return;
-  }
-
-  if(c.teeSets.length > 1){
-    const teeList = c.teeSets.map(t => `${t.teeName || t.teeColour}${t.gender ? " ("+t.gender+")" : ""}`).join(", ");
-    note.textContent = `This course has ${c.teeSets.length} tee-sets imported from CSV (${teeList}). Showing the first one for reference — Save is disabled here to avoid collapsing them into one. Delete and re-import the CSV to update it.`;
-    note.style.display = "block";
-    saveBtn.disabled = true;
-  } else {
-    note.style.display = "none";
-    saveBtn.disabled = false;
-  }
-
-  const ts = c.teeSets[0];
-  document.getElementById("libHoleCount").value = String(ts.holes.length > 9 ? 18 : 9);
-  libHoles = ts.holes.map(h => ({...h}));
-  renderLibScorecardTable();
-}
-
-function resetLibForm(){
-  document.getElementById("libCourseName").value = "";
-  document.getElementById("libMultiTeeNote").style.display = "none";
-  document.getElementById("saveCourseBtn").disabled = false;
-  const holeCount = Number(document.getElementById("libHoleCount").value) || 18;
-  buildLibHoles(holeCount);
-  renderLibScorecardTable();
-  document.getElementById("libCourseSelect").value = "";
 }
 
 function getHC(){
@@ -2285,7 +2005,6 @@ document.getElementById("saveScorecardBtn").addEventListener("click", ()=>{
     courseLibrary.push({ name, union:"", city:"", teeSets:[teeSet] });
   }
   saveCourses();
-  populateLibCourseSelect();
   alert(`Saved the "${teeSet.teeName}" Par / Stroke Index scorecard for "${name}" (${holeCount} holes). It'll auto-fill next time this course is played with the same Gender/Tee Marker.`);
 });
 
@@ -2460,90 +2179,27 @@ document.getElementById("clearHistoryBtn").addEventListener("click", ()=>{
 
 document.getElementById("exportCsvBtn").addEventListener("click", exportCsv);
 
-document.getElementById("libCourseSelect").addEventListener("change", (e)=>{
-  const idx = e.target.value;
-  if(idx === ""){ resetLibForm(); return; }
-  loadLibCourseIntoForm(Number(idx));
-});
-
-// Type a few characters to narrow the Saved Courses dropdown down from 500+ national entries.
-document.getElementById("libCourseFilter").addEventListener("input", ()=>{
-  populateLibCourseSelect();
-});
-
-document.getElementById("libHoleCount").addEventListener("change", (e)=>{
-  // Switching hole count starts a fresh scorecard at that size — Stroke Index assignment for a
-  // 9-hole layout isn't simply "half of" the 18-hole one, so the old holes don't carry over.
-  buildLibHoles(Number(e.target.value));
-  renderLibScorecardTable();
-  document.getElementById("libCourseSelect").value = "";
-});
-
-document.getElementById("saveCourseBtn").addEventListener("click", ()=>{
-  const name = document.getElementById("libCourseName").value.trim();
-  if(!name){ alert("Enter a course name before saving."); return; }
-  const holeCount = Number(document.getElementById("libHoleCount").value);
-
-  // Multi-tee-set courses (from a CSV import) are view/delete-only in this editor to avoid
-  // accidentally collapsing several real tee-sets down into a single generic one.
-  const existing = findCourse(name);
-  if(existing && existing.teeSets && existing.teeSets.length > 1){
-    alert(`"${name}" has ${existing.teeSets.length} imported tee-sets and can't be edited here. Delete it first if you want to replace it with a single manually-entered scorecard.`);
+// Minimal in-app cleanup control (the full Course Library admin card — CSV import, manual
+// creation/editor form — was removed once the app started shipping with the full national HNA
+// seed baked in at build time; bulk/library updates now happen by regenerating that seed in code,
+// not through the app itself). This is the one thing that workflow can't do: pull a single bad or
+// duplicate entry back out of an already-shipped install. Deleting only removes the Course
+// Library scorecard entry — it never touches rounds already saved to History.
+document.getElementById("deleteSavedCourseBtn").addEventListener("click", ()=>{
+  const name = document.getElementById("roundCourse").value.trim();
+  const course = findCourse(name);
+  if(!course){
+    alert(`"${name || "(blank)"}" isn't a saved Course Library entry — nothing to delete. (This only removes a saved scorecard, not the course name itself; you can still enter Par/Stroke Index by hand.)`);
     return;
   }
-
-  const teeSet = {
-    teeName: "Default", teeColour: "", gender: "",
-    courseRating: null, slopeRating: null,
-    holes: libHoles.slice(0, holeCount).map(h => ({ hole: h.hole, par: Number(h.par), stroke: Number(h.stroke), distance: null }))
-  };
-  if(existing){
-    existing.teeSets = [teeSet];
-  } else {
-    courseLibrary.push({ name, union:"", city:"", teeSets:[teeSet] });
-  }
+  const teeCount = course.teeSets ? course.teeSets.length : 0;
+  if(!confirm(`Delete "${course.name}" (${teeCount} tee-set${teeCount === 1 ? "" : "s"}) from the Course Library? This does not affect any rounds already saved to history.`)) return;
+  const idx = courseLibrary.findIndex(c => c.name === course.name);
+  if(idx >= 0) courseLibrary.splice(idx, 1);
   saveCourses();
-  populateLibCourseSelect(name);
-  alert(`Saved "${name}" (${holeCount} holes) to the Course Library. It now appears in Round Entry's course suggestions and will auto-fill its scorecard.`);
-});
-
-document.getElementById("deleteCourseBtn").addEventListener("click", ()=>{
-  const idx = document.getElementById("libCourseSelect").value;
-  if(idx === ""){ alert("Select a saved course to delete first."); return; }
-  const c = courseLibrary[Number(idx)];
-  if(!c) return;
-  const teeCount = c.teeSets ? c.teeSets.length : 0;
-  if(!confirm(`Delete "${c.name}" (${teeCount} tee-set${teeCount === 1 ? "" : "s"})? This does not affect any rounds already saved to history.`)) return;
-  courseLibrary.splice(Number(idx), 1);
-  saveCourses();
-  resetLibForm();
-  populateLibCourseSelect();
-});
-
-document.getElementById("csvImportFile").addEventListener("change", (e)=>{
-  const file = e.target.files && e.target.files[0];
-  const status = document.getElementById("csvImportStatus");
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    try{
-      const rows = parseCsvRows(ev.target.result);
-      const { courses, extractedRowCount } = csvRowsToCourses(rows);
-      if(courses.length === 0){
-        status.textContent = `No usable scorecard rows found in "${file.name}" (looked for rows with scorecard_status = Extracted).`;
-        return;
-      }
-      const { added, updated } = importCourses(courses);
-      populateLibCourseSelect();
-      status.textContent = `Imported "${file.name}": ${added} new course(s), ${updated} updated, from ${extractedRowCount} scorecard row(s). They now appear in Round Entry's course suggestions.`;
-    }catch(err){
-      status.textContent = `Could not import "${file.name}": ${err.message}`;
-    }finally{
-      e.target.value = "";
-    }
-  };
-  reader.onerror = () => { status.textContent = `Could not read "${file.name}".`; e.target.value = ""; };
-  reader.readAsText(file);
+  restoreDefaultTeeOptions();
+  updateCourseRatingNote(null, null);
+  alert(`Deleted "${course.name}" from the Course Library.`);
 });
 
 // init
@@ -2555,9 +2211,6 @@ buildHoles(18);
 renderHoleTable();
 renderHistory();
 setupCourseAutocomplete();
-buildLibHoles(18);
-renderLibScorecardTable();
-populateLibCourseSelect();
 document.getElementById("roundDate").value = new Date().toISOString().slice(0,10);
 
 if("serviceWorker" in navigator){
