@@ -292,9 +292,10 @@
         </div>
         <div>
           <label>HC (Course Handicap)</label>
-          <input type="number" id="playerHC" step="1" min="0" placeholder="e.g. 16" style="width:100px;">
+          <input type="number" id="playerHC" step="1" min="0" placeholder="auto or manual" style="width:100px;">
         </div>
       </div>
+      <p class="small-note" style="margin-top:6px;">HC auto-calculates from your HI once the Round Entry Course + Tee Marker + Gender match a Course Library entry with Course Rating/Slope Rating on file (see the note under Course in Round Entry). For courses not yet in the library, just type your HC in directly.</p>
       <p class="small-note">Profiles are stored on this device only. To create a new profile, type your name next to the Profile dropdown above, fill in your details below, then tap "Save Profile". Next time, just pick your name from the dropdown (a simple "login"). Real OTP-verified accounts are a planned future upgrade.</p>
     </div>
 
@@ -1107,10 +1108,27 @@ function updateTeeMarkerOptionsForCourse(course){
   }
 }
 
-// Small read-only line under the Course field showing which tee-set is loaded, plus its Course
-// Rating / Slope Rating when the CSV/manual data included them — reference info only, doesn't
-// feed into any calculation.
-function updateCourseRatingNote(course, teeSet){
+// World Handicap System Course Handicap formula:
+//   HC = round( HI × (Slope Rating / 113) + (Course Rating − Par) )
+// Returns null (never guesses) if the tee-set has no real Course/Slope Rating on file, the
+// player hasn't entered an HI yet, or Par can't be determined — in every one of those cases the
+// HC field is left exactly as the player typed it.
+function calculateCourseHandicap(hi, teeSet, totalPar){
+  if(!teeSet) return null;
+  const hiNum = parseFloat(hi);
+  if(isNaN(hiNum)) return null;
+  const slope = num(teeSet.slopeRating);
+  const rating = num(teeSet.courseRating);
+  const par = num(totalPar);
+  if(!slope || !rating || !par) return null;
+  return Math.round(hiNum * (slope / 113) + (rating - par));
+}
+
+// Small read-only line under the Course field: which tee-set is loaded, its Course Rating /
+// Slope Rating, and — once both those and the player's HI are known — the Course Handicap
+// calculated from those exact numbers. Reference/feedback only; recalcCourseHandicap() below is
+// what actually keeps the HC field itself in sync.
+function updateCourseRatingNote(course, teeSet, hc){
   const el = document.getElementById("courseRatingNote");
   if(!el) return;
   if(!course || !teeSet){ el.textContent = ""; return; }
@@ -1119,7 +1137,41 @@ function updateCourseRatingNote(course, teeSet){
   if(teeLabel) bits.push(teeLabel);
   if(teeSet.courseRating) bits.push(`CR ${teeSet.courseRating}`);
   if(teeSet.slopeRating) bits.push(`Slope ${teeSet.slopeRating}`);
-  el.textContent = bits.length ? `📋 ${bits.join(" · ")} scorecard loaded` : "";
+  let text = bits.length ? `📋 ${bits.join(" · ")} scorecard loaded` : "";
+  if(hc !== null && hc !== undefined){
+    text += (text ? " — " : "") + `Course Handicap ${hc} (calculated from your HI)`;
+  }
+  el.textContent = text;
+}
+
+// Recomputes the Course Handicap whenever Course, Tee Marker, Gender, HI, or the loaded Par total
+// changes, using the selected tee-set's real Course Rating / Slope Rating from the Course
+// Library. Silently updates the HC field when a full match is found; otherwise leaves HC alone —
+// plenty of rounds are still played at courses (or tees) not yet in the library, and manual entry
+// always keeps working for those.
+function recalcCourseHandicap(){
+  const name = document.getElementById("roundCourse").value;
+  const teeName = document.getElementById("teeMarker").value;
+  const gender = document.getElementById("playerGender").value;
+  const course = findCourse(name);
+  const teeSet = course ? pickBestTeeSet(course, teeName, gender) : null;
+
+  if(!teeSet || !teeSet.courseRating || !teeSet.slopeRating){
+    updateCourseRatingNote(course, teeSet, null);
+    return;
+  }
+
+  const hiVal = document.getElementById("playerHI").value;
+  const totalPar = holes.reduce((sum, h) => sum + num(h.par), 0);
+  const hc = calculateCourseHandicap(hiVal, teeSet, totalPar);
+  updateCourseRatingNote(course, teeSet, hc);
+  if(hc === null) return;
+
+  const hcInput = document.getElementById("playerHC");
+  if(hcInput && Number(hcInput.value) !== hc){
+    hcInput.value = hc;
+    updateTotalsAndSummary();
+  }
 }
 
 // Looks up the current Course + Tee Marker + Gender selection in the Course Library and, if
@@ -1137,7 +1189,7 @@ function tryAutoFillCourseScorecard(opts){
   const hasAnyScore = holes.some(holeHasRealEntry);
 
   if(!teeSet){
-    updateCourseRatingNote(null, null);
+    recalcCourseHandicap();
     if(!silent){
       alert(`No saved scorecard yet for "${name || "this course"}". Set Par and Stroke Index below to match the real scorecard, then tap "Remember This Scorecard" so it auto-fills next time.`);
     }
@@ -1145,7 +1197,8 @@ function tryAutoFillCourseScorecard(opts){
   }
 
   if(hasAnyScore){
-    if(silent) return false; // never clobber live data without asking
+    recalcCourseHandicap(); // course/tee/gender still changed — keep the CR/Slope/HC note current
+    if(silent) return false; // never clobber live scores without asking
     const teeLabel = teeSet.teeName || teeSet.teeColour;
     if(!confirm(`Load the "${teeLabel}" scorecard for "${course.name}"? This replaces the Par and Stroke Index below (your scores and putts already entered are kept).`)) return false;
   }
@@ -1153,7 +1206,7 @@ function tryAutoFillCourseScorecard(opts){
   applyScorecardToHoles(holes, teeSet);
   renderHoleTable();
   updateTotalsAndSummary();
-  updateCourseRatingNote(course, teeSet);
+  recalcCourseHandicap();
   if(!silent){
     const teeLabel = teeSet.teeName || teeSet.teeColour;
     alert(`Loaded the "${teeLabel}" scorecard for "${course.name}".`);
@@ -2141,6 +2194,11 @@ document.getElementById("historyDetailSaveBtn").addEventListener("click", ()=>{
 document.getElementById("playerHC").addEventListener("input", updateTotalsAndSummary);
 document.getElementById("playerHC").addEventListener("change", updateTotalsAndSummary);
 
+// Typing/changing HI recalculates HC immediately when the current Course + Tee + Gender matches
+// a Course Library entry with real Course Rating / Slope Rating on file.
+document.getElementById("playerHI").addEventListener("input", recalcCourseHandicap);
+document.getElementById("playerHI").addEventListener("change", recalcCourseHandicap);
+
 document.getElementById("playerDOB").addEventListener("change", (e)=>{
   document.getElementById("playerAge").value = calculateAge(e.target.value);
 });
@@ -2150,6 +2208,7 @@ document.getElementById("profileSelect").addEventListener("change", (e)=>{
   if(!name){ clearProfileForm(); renderHistory(); return; }
   const p = profiles.find(pr => pr.name === name);
   if(p) fillProfileForm(p);
+  recalcCourseHandicap(); // this profile's own HI/Gender may change the calculated HC
   renderHistory(); // switching player re-scopes Round History, Career Totals, and all trend charts
 });
 
@@ -2267,7 +2326,7 @@ document.getElementById("deleteSavedCourseBtn").addEventListener("click", ()=>{
   if(idx >= 0) courseLibrary.splice(idx, 1);
   saveCourses();
   restoreDefaultTeeOptions();
-  updateCourseRatingNote(null, null);
+  recalcCourseHandicap();
   alert(`Deleted "${course.name}" from the Course Library.`);
 });
 
