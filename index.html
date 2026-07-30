@@ -245,13 +245,6 @@
       </div>
       <div class="profile-fields">
         <div>
-          <label>Gender</label>
-          <select id="playerGender">
-            <option value="Men">Men</option>
-            <option value="Women">Women</option>
-          </select>
-        </div>
-        <div>
           <label>Email Address</label>
           <input type="email" id="playerEmail" placeholder="name@example.com" style="width:200px;">
         </div>
@@ -276,7 +269,31 @@
           <input type="text" id="affiliatedClub" placeholder="Club name" style="width:200px;">
         </div>
       </div>
-      <div class="profile-fields" style="margin-bottom:0;">
+      <p class="small-note">Profiles are stored on this device only. To create a new profile, type your name next to the Profile dropdown above, fill in your details below, then tap "Save Profile". Next time, just pick your name from the dropdown (a simple "login"). Real OTP-verified accounts are a planned future upgrade.</p>
+    </div>
+
+    <div class="card">
+      <h2>Course &amp; Handicap</h2>
+      <div class="round-meta">
+        <div class="course-field-wrap">
+          <label>Course</label>
+          <input type="text" id="roundCourse" placeholder="Course name" style="width:200px;" autocomplete="off">
+          <div id="courseSuggestions" class="course-suggestions"></div>
+        </div>
+        <div>
+          <label>Holes</label>
+          <select id="holeCount">
+            <option value="18" selected>18</option>
+            <option value="9">9</option>
+          </select>
+        </div>
+        <div>
+          <label>Gender</label>
+          <select id="playerGender">
+            <option value="Men">Men</option>
+            <option value="Women">Women</option>
+          </select>
+        </div>
         <div>
           <label>Tee Marker</label>
           <select id="teeMarker">
@@ -295,8 +312,14 @@
           <input type="number" id="playerHC" step="1" min="0" placeholder="auto or manual" style="width:100px;">
         </div>
       </div>
-      <p class="small-note" style="margin-top:6px;">HC auto-calculates from your HI once the Round Entry Course + Tee Marker + Gender match a Course Library entry with Course Rating/Slope Rating on file (see the note under Course in Round Entry). For courses not yet in the library, just type your HC in directly.</p>
-      <p class="small-note">Profiles are stored on this device only. To create a new profile, type your name next to the Profile dropdown above, fill in your details below, then tap "Save Profile". Next time, just pick your name from the dropdown (a simple "login"). Real OTP-verified accounts are a planned future upgrade.</p>
+
+      <div class="btn-row" style="margin-top:0;margin-bottom:4px;">
+        <button class="btn secondary" id="loadScorecardBtn" type="button" style="padding:5px 10px;font-size:0.75rem;">📋 Load Saved Scorecard</button>
+        <button class="btn secondary" id="saveScorecardBtn" type="button" style="padding:5px 10px;font-size:0.75rem;">💾 Remember This Scorecard</button>
+        <button class="btn secondary" id="deleteSavedCourseBtn" type="button" style="padding:5px 10px;font-size:0.75rem;">🗑️ Delete Saved Course</button>
+      </div>
+      <p class="small-note" id="courseRatingNote" style="margin-top:0;margin-bottom:6px;min-height:1em;"></p>
+      <p class="small-note">HC auto-calculates from your HI once Course + Tee Marker + Gender match a Course Library entry with Course Rating/Slope Rating on file (see the note above). For courses not yet in the library, just type your HC in directly.</p>
     </div>
 
     <div class="card">
@@ -306,26 +329,7 @@
           <label>Date</label>
           <input type="date" id="roundDate">
         </div>
-        <div class="course-field-wrap">
-          <label>Course</label>
-          <input type="text" id="roundCourse" placeholder="Course name" style="width:200px;" autocomplete="off">
-          <div id="courseSuggestions" class="course-suggestions"></div>
-        </div>
-        <div>
-          <label>Holes</label>
-          <select id="holeCount">
-            <option value="18" selected>18</option>
-            <option value="9">9</option>
-          </select>
-        </div>
       </div>
-
-      <div class="btn-row" style="margin-top:0;margin-bottom:4px;">
-        <button class="btn secondary" id="loadScorecardBtn" type="button" style="padding:5px 10px;font-size:0.75rem;">📋 Load Saved Scorecard</button>
-        <button class="btn secondary" id="saveScorecardBtn" type="button" style="padding:5px 10px;font-size:0.75rem;">💾 Remember This Scorecard</button>
-        <button class="btn secondary" id="deleteSavedCourseBtn" type="button" style="padding:5px 10px;font-size:0.75rem;">🗑️ Delete Saved Course</button>
-      </div>
-      <p class="small-note" id="courseRatingNote" style="margin-top:0;margin-bottom:14px;min-height:1em;"></p>
 
       <div class="table-scroll">
         <table id="holeTable">
