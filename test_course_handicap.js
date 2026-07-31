@@ -141,6 +141,67 @@ function fire(el, type){ el.dispatchEvent(new window.Event(type, {bubbles:true})
     Number(hcInput.value) === expectedWhite);
   check("HC does NOT show the mismatched (stale-Par) result", Number(hcInput.value) !== buggyMismatch);
 
+  // ---- 7. Regression: some real clubs only have a "Yellow" tee filed for ONE gender, with the
+  // other gender's data sitting under a different tee name (e.g. "Blue"). If "Yellow" is just
+  // left over from a previous course/screen (not a deliberate pick at THIS club) and a Women
+  // golfer opens this club, the app must not silently default the Tee Marker to the Men-only
+  // "Yellow" tee just because that name happens to carry over — it should land on the correct-
+  // gender "Blue" tee instead, both in the dropdown itself and in the HC calculation. (A player
+  // who deliberately types/selects "Yellow" herself afterwards still gets the Men's Yellow data,
+  // same as explicitly picking a men-only "Championship" tee elsewhere — deliberate tee-name
+  // choices are always honoured. This regression is specifically about the automatic default.)
+  const yellowMenHoles = Array.from({length:18}, (_,i)=>({hole:i+1, par:4, stroke:i+1}));       // Par 72
+  const blueWomenHoles = yellowMenHoles.map((h,i)=> i < 3 ? {...h, par:5} : h);                   // Par 75
+  window.importCourses([{
+    name: "Test Gender Priority Golf Club",
+    teeSets: [
+      { teeName: "Yellow", teeColour:"", gender: "Men", courseRating: 68.0, slopeRating: 110, holes: yellowMenHoles },
+      { teeName: "Blue", teeColour:"", gender: "Women", courseRating: 74.0, slopeRating: 130, holes: blueWomenHoles }
+    ]
+  }]);
+
+  // Simulate "Yellow" being left over as the Tee Marker value from earlier (a different course,
+  // or just the app's own default), then a Women golfer opens this new club.
+  genderSel.value = "Women";
+  fire(genderSel, "change");
+  window.restoreDefaultTeeOptions(); // simulate "Yellow" being a valid, pre-existing dropdown value
+  teeSel.value = "Yellow";
+  fire(teeSel, "change");
+
+  courseInput.value = "Test Gender Priority Golf Club";
+  fire(courseInput, "change");
+  await wait(20);
+
+  check('"Yellow" is offered as a Tee Marker option even though it is only filed for Men here',
+    [...teeSel.options].some(o => o.value === "Yellow"));
+  check('Opening this club auto-corrects the Tee Marker to "Blue" instead of defaulting to the Men-only "Yellow"',
+    teeSel.value === "Blue");
+
+  hiInput.value = "12";
+  fire(hiInput, "input");
+  fire(hiInput, "change");
+  await wait(20);
+
+  const expectedCorrectGender = window.calculateCourseHandicap(12, {courseRating:74.0, slopeRating:130}, 75);
+  const buggyWrongGender = window.calculateCourseHandicap(12, {courseRating:68.0, slopeRating:110}, 72);
+  check("Sanity: correct-gender and wrong-gender results are distinguishable", expectedCorrectGender !== buggyWrongGender);
+  check("HC uses the Women's (Blue) rating, not the leftover Men's Yellow rating",
+    Number(hcInput.value) === expectedCorrectGender);
+  check("HC does NOT use the wrong-gender Men's Yellow numbers", Number(hcInput.value) !== buggyWrongGender);
+  check("Course rating note reflects the actual tee used (Blue), not the leftover name (Yellow)",
+    note.textContent.includes("Blue") && note.textContent.includes("CR 74"));
+
+  // ---- 8. Deliberate override still works: explicitly picking "Yellow" herself afterwards shows
+  // the Men's Yellow data for that specific named tee — same precedent as a men-only "Championship"
+  // tee elsewhere. This is intentional (there's no better data for that exact tee she chose), and
+  // must keep working even after the auto-default fix above.
+  teeSel.value = "Yellow";
+  fire(teeSel, "change");
+  await wait(20);
+  const expectedDeliberateYellow = window.calculateCourseHandicap(12, {courseRating:68.0, slopeRating:110}, 72);
+  check('Deliberately selecting "Yellow" herself still shows the Men\'s Yellow data for that named tee',
+    Number(hcInput.value) === expectedDeliberateYellow);
+
   let allPass = true;
   for(const r of results){
     console.log((r.pass ? "PASS" : "FAIL") + " - " + r.name);

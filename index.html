@@ -773,9 +773,11 @@ function getCourseLibrarySnapshot(){
   return courseLibrary.map(c => ({ name: c.name, teeSetCount: (c.teeSets || []).length }));
 }
 
-// Picks the tee-set that best matches the currently selected Tee Marker + Gender, falling back
-// sensibly (tee name only, then gender only, then just the first tee-set) rather than finding
-// nothing just because of a small mismatch.
+// Picks the tee-set for whatever tee NAME is currently selected in the Tee Marker dropdown, i.e.
+// "the player deliberately chose this named tee" — so an exact name match wins even across
+// genders (e.g. a men-only "Championship" tee is still shown when a Women golfer explicitly picks
+// "Championship"; there's no better data to offer for that specific, deliberately-chosen tee).
+// Falls back to gender-only, then just the first tee-set, if the exact name doesn't exist at all.
 function pickBestTeeSet(course, teeName, gender){
   if(!course || !course.teeSets || course.teeSets.length === 0) return null;
   const norm = s => (s || "").trim().toLowerCase();
@@ -784,6 +786,28 @@ function pickBestTeeSet(course, teeName, gender){
   match = course.teeSets.find(t => norm(t.teeName) === norm(teeName));
   if(match) return match;
   match = course.teeSets.find(t => norm(t.gender) === norm(gender));
+  if(match) return match;
+  return course.teeSets[0];
+}
+
+// Picks which tee-set to AUTO-SELECT as the default when a course is first chosen (or a saved
+// scorecard is auto-filled) — as opposed to pickBestTeeSet above, which resolves whatever tee name
+// the player has just deliberately picked. Here, unlike a deliberate pick, there's no real
+// intent behind the previously-selected tee NAME carrying over from a different course, so
+// getting the GENDER right takes priority: a handful of clubs only file one gender's rating under
+// a given tee name (e.g. "Yellow" recorded for Men only, with Women's data under "Blue" at the
+// same course) — silently defaulting a Women golfer onto that Men-only "Yellow" tee just because
+// it was the leftover selection would hand her the wrong Course Rating/Slope without any visible
+// sign anything was substituted. Preferring gender here means the dropdown itself lands on the
+// tee she'd actually play (e.g. "Blue"), which then resolves cleanly through pickBestTeeSet above.
+function pickDefaultTeeSetForCourse(course, previousTeeName, gender){
+  if(!course || !course.teeSets || course.teeSets.length === 0) return null;
+  const norm = s => (s || "").trim().toLowerCase();
+  let match = course.teeSets.find(t => norm(t.teeName) === norm(previousTeeName) && norm(t.gender) === norm(gender));
+  if(match) return match;
+  match = course.teeSets.find(t => norm(t.gender) === norm(gender));
+  if(match) return match;
+  match = course.teeSets.find(t => norm(t.teeName) === norm(previousTeeName));
   if(match) return match;
   return course.teeSets[0];
 }
@@ -1111,7 +1135,7 @@ function updateTeeMarkerOptionsForCourse(course){
   if(opts.length === 0){ restoreDefaultTeeOptions(); return; }
 
   const gender = document.getElementById("playerGender").value;
-  const preferred = pickBestTeeSet(course, select.value, gender);
+  const preferred = pickDefaultTeeSetForCourse(course, select.value, gender);
   select.innerHTML = opts.map(o => `<option value="${o.value}">${o.label}</option>`).join("");
   if(preferred){
     const preferredValue = preferred.teeName || preferred.teeColour;
