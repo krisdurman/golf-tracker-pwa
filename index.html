@@ -1173,7 +1173,14 @@ function recalcCourseHandicap(){
   }
 
   const hiVal = document.getElementById("playerHI").value;
-  const totalPar = holes.reduce((sum, h) => sum + num(h.par), 0);
+  // Par must come from THIS tee-set's own rated scorecard, not the live holes array — the live
+  // array can still be showing a different (not-yet-reloaded) tee's Par whenever a reload was
+  // silently skipped to protect scores already entered (see tryAutoFillCourseScorecard's
+  // hasAnyScore guard below), and it can also reflect a player's manual per-hole Par edits. Either
+  // way, mixing this tee-set's Course Rating/Slope with a mismatched Par produces a wrong,
+  // seemingly "random" Course Handicap — so always pair CR/Slope with the SAME tee-set's own Par.
+  const holeCount = holes.length || teeSet.holes.length;
+  const totalPar = teeSet.holes.slice(0, holeCount).reduce((sum, ch) => sum + num(ch.par), 0);
   const hc = calculateCourseHandicap(hiVal, teeSet, totalPar);
   updateCourseRatingNote(course, teeSet, hc);
   if(hc === null) return;

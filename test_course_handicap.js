@@ -90,6 +90,57 @@ function fire(el, type){ el.dispatchEvent(new window.Event(type, {bubbles:true})
   check("Manual HC is left untouched for a course with no library/rating match", hcInput.value === "99");
   check("Course rating note clears when the course isn't a library match", note.textContent === "");
 
+  // ---- 6. Regression: switching Tee Marker AFTER a real score is already entered must not pair
+  // the newly-selected tee's Course Rating/Slope with the PREVIOUS tee's Par. Once any real score
+  // exists, tryAutoFillCourseScorecard deliberately skips reloading the live holes (so it never
+  // clobbers what's been entered) — but the HC calculation must still use the new tee's OWN rated
+  // Par, not whatever Par happens to still be sitting in the live scorecard. This is the bug behind
+  // reports of "inconsistent" HC, most visible on courses/tees commonly picked mid-round.
+  const par4x18 = Array.from({length:18}, (_,i)=>({hole:i+1, par:4, stroke:i+1}));       // Red: total par 72
+  const mixedPar = par4x18.map((h,i)=> i < 2 ? {...h, par:5} : h);                        // White: total par 74
+  window.importCourses([{
+    name: "Test Mismatch Golf Club",
+    teeSets: [
+      { teeName: "Red", teeColour:"", gender: "Men", courseRating: 68.0, slopeRating: 118, holes: par4x18 },
+      { teeName: "White", teeColour:"", gender: "Men", courseRating: 70.0, slopeRating: 125, holes: mixedPar }
+    ]
+  }]);
+
+  genderSel.value = "Men";
+  fire(genderSel, "change");
+  courseInput.value = "Test Mismatch Golf Club";
+  fire(courseInput, "change");
+  await wait(20);
+  teeSel.value = "Red";
+  fire(teeSel, "change");
+  await wait(20);
+
+  hiInput.value = "10";
+  fire(hiInput, "input");
+  fire(hiInput, "change");
+  await wait(20);
+  const expectedRed = window.calculateCourseHandicap(10, {courseRating:68.0, slopeRating:118}, 72);
+  check("Setup check: HC correct at Red (Par 72) before switching tees", Number(hcInput.value) === expectedRed);
+
+  // Enter a real score so the live holes now hold a genuine entry (blocks silent reload).
+  const scoreInput = doc.querySelectorAll("#holeTable tbody tr")[0].querySelector('input[data-field="score"]');
+  scoreInput.value = "9";
+  fire(scoreInput, "input");
+  fire(scoreInput, "change");
+  await wait(20);
+
+  // Switch to White — silently skips reloading the scorecard (a real score exists), but HC must
+  // still be computed against White's OWN Par (74), not Red's stale live Par (72).
+  teeSel.value = "White";
+  fire(teeSel, "change");
+  await wait(20);
+  const expectedWhite = window.calculateCourseHandicap(10, {courseRating:70.0, slopeRating:125}, 74);
+  const buggyMismatch = window.calculateCourseHandicap(10, {courseRating:70.0, slopeRating:125}, 72);
+  check("Sanity: the correct and mismatched results are actually distinguishable", expectedWhite !== buggyMismatch);
+  check("HC after switching tees mid-round uses White's own Par, not the stale Red Par",
+    Number(hcInput.value) === expectedWhite);
+  check("HC does NOT show the mismatched (stale-Par) result", Number(hcInput.value) !== buggyMismatch);
+
   let allPass = true;
   for(const r of results){
     console.log((r.pass ? "PASS" : "FAIL") + " - " + r.name);
