@@ -56,9 +56,10 @@ function wait(ms){ return new Promise(r=>setTimeout(r, ms)); }
   const suggestionNames = [...doc.querySelectorAll(".course-suggestion-item")].map(el => el.dataset.name);
   check("Saved course appears in autocomplete suggestions", suggestionNames.includes("Boss Consulting Links"));
 
-  // ---- 3. Selecting it (mousedown on the suggestion) silently auto-fills its saved scorecard ----
+  // ---- 3. Selecting it (pointerdown on the suggestion, so it also works for iOS Safari taps)
+  // silently auto-fills its saved scorecard ----
   const suggestionItem = [...doc.querySelectorAll(".course-suggestion-item")].find(el => el.dataset.name === "Boss Consulting Links");
-  suggestionItem.dispatchEvent(new window.Event("mousedown", {bubbles:true}));
+  suggestionItem.dispatchEvent(new window.Event("pointerdown", {bubbles:true}));
   await wait(30);
 
   check("Course field set from suggestion", doc.getElementById("roundCourse").value === "Boss Consulting Links");
