@@ -635,8 +635,16 @@
   </div>
 </div>
 
+<p class="small-note" id="appVersionFooter" style="text-align:center;margin:16px 0 8px;opacity:0.55;"></p>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script>
+// Bump this alongside CACHE_NAME in service-worker.js on every deploy. Shown in the small footer
+// at the bottom of the page so it's possible to confirm, at a glance, whether a device has
+// actually picked up the latest fix yet — several past bug reports turned out to be about a
+// device still running an older cached version rather than a live code defect.
+const APP_VERSION = "v33";
+
 const STORAGE_KEY = "golfTrackerHistoryV1";
 const PROFILES_KEY = "golfTrackerProfilesV1";
 const COURSES_KEY = "golfTrackerCoursesV1";
@@ -2393,6 +2401,8 @@ renderHistory();
 setupCourseAutocomplete();
 renderCoachTip();
 document.getElementById("roundDate").value = new Date().toISOString().slice(0,10);
+const appVersionFooterEl = document.getElementById("appVersionFooter");
+if(appVersionFooterEl) appVersionFooterEl.textContent = `Golf Tracker ${APP_VERSION}`;
 
 // Shows the "a new version is ready" banner. Split out as its own function (rather than inlined
 // into the registration code below) so a test harness can trigger it directly without needing a

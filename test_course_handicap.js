@@ -202,6 +202,43 @@ function fire(el, type){ el.dispatchEvent(new window.Event(type, {bubbles:true})
   check('Deliberately selecting "Yellow" herself still shows the Men\'s Yellow data for that named tee',
     Number(hcInput.value) === expectedDeliberateYellow);
 
+  // ---- 9. Real-world regression from a live bug report: ERPM GOLF CLUB (national seed data,
+  // not a synthetic fixture) has "Blue" and "Red" both filed for Men AND Women:
+  //   Blue/Women: CR 76.5, Slope 142, Par 72
+  //   Red/Women:  CR 72.9, Slope 128, Par 72
+  // Reported symptom: Gender=Women, Tee Marker showing "Red", HI 16.1 -> HC showed 25, which is
+  // actually Blue/Women's number (round(16.1*142/113 + (76.5-72)) = 25), not Red/Women's correct
+  // 19. Root cause: the course was opened while "Blue" was still sitting in the Tee Marker select
+  // (left over from browsing a previous course) and Gender was already Women, so the auto-default
+  // exact-match (Blue+Women) fired and loaded Blue's rating; switching to "Red" afterwards must
+  // recalculate off Red's own rating, not leave the earlier Blue-derived number on screen.
+  genderSel.value = "Women";
+  fire(genderSel, "change");
+  window.restoreDefaultTeeOptions();
+  teeSel.value = "Blue"; // leftover value from a previous course, exactly as in the bug report
+  fire(teeSel, "change");
+  courseInput.value = "ERPM GOLF CLUB";
+  fire(courseInput, "change");
+  await wait(20);
+
+  check("ERPM: leftover \"Blue\" auto-confirms as the default for Women (both genders are on file)",
+    teeSel.value === "Blue");
+
+  hiInput.value = "16.1";
+  fire(hiInput, "input");
+  fire(hiInput, "change");
+  await wait(20);
+  check("ERPM: HC correct for the auto-selected Blue/Women tee before any manual switch",
+    Number(hcInput.value) === 25);
+
+  teeSel.value = "Red";
+  fire(teeSel, "change");
+  await wait(20);
+  check('ERPM: switching Tee Marker to "Red" recalculates off Red/Women\'s own rating (19), not the stale Blue-derived 25',
+    Number(hcInput.value) === 19);
+  check("ERPM: course rating note reflects Red's own CR after the switch",
+    note.textContent.includes("Red") && note.textContent.includes("CR 72.9") && note.textContent.includes("Course Handicap 19"));
+
   let allPass = true;
   for(const r of results){
     console.log((r.pass ? "PASS" : "FAIL") + " - " + r.name);
