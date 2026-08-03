@@ -643,7 +643,7 @@
 // at the bottom of the page so it's possible to confirm, at a glance, whether a device has
 // actually picked up the latest fix yet — several past bug reports turned out to be about a
 // device still running an older cached version rather than a live code defect.
-const APP_VERSION = "v33";
+const APP_VERSION = "v34";
 
 const STORAGE_KEY = "golfTrackerHistoryV1";
 const PROFILES_KEY = "golfTrackerProfilesV1";
@@ -726,6 +726,10 @@ function loadCourses(){
     seedCoursesIfMissing(SEED_COURSES_SA);
     localStorage.setItem(COURSES_SEEDED_KEY, "1");
   }
+
+  // Safe to run on every load (cheap, and a no-op once healed) — restores any tee-set's real
+  // rating data that was silently wiped by the "Remember This Scorecard" bug described above.
+  repairMissingTeeRatings(SEED_COURSES_SA);
 }
 function saveCourses(){
   localStorage.setItem(COURSES_KEY, JSON.stringify(courseLibrary));
@@ -752,6 +756,44 @@ function seedCoursesIfMissing(seedCourses){
   });
   if(added > 0 || upgraded > 0) saveCourses();
   return added;
+}
+
+// One-time-per-corruption repair for local Course Library data that was silently stripped of its
+// real Course Rating / Slope Rating / colour by the "Remember This Scorecard" bug (see
+// saveScorecardBtn's handler below — it used to hard-code these to null/"" on every save, even
+// when overwriting a tee that already had real rating data on file, breaking HC auto-calc for
+// that tee with no obvious cause other than its colour label quietly going missing). Any tee-set
+// missing its rating gets it restored from the national seed wherever an exact Course + Tee Name
+// + Gender match exists there — the tee-set's own Par/Stroke Index holes are left completely
+// untouched, since those may reflect real, deliberate edits. Safe to call on every load: a
+// tee-set that's already fine, or has no seed counterpart to heal from, is simply left alone.
+function repairMissingTeeRatings(seedCourses){
+  const seedLookup = new Map();
+  seedCourses.forEach(c => {
+    const courseKey = c.name.trim().toLowerCase();
+    (c.teeSets || []).forEach(t => {
+      const key = `${courseKey}|${(t.teeName||"").trim().toLowerCase()}|${(t.gender||"").trim().toLowerCase()}`;
+      seedLookup.set(key, t);
+    });
+  });
+
+  let healed = 0;
+  courseLibrary.forEach(c => {
+    const courseKey = c.name.trim().toLowerCase();
+    (c.teeSets || []).forEach(t => {
+      if(t.courseRating && t.slopeRating) return; // already has real rating data, nothing to heal
+      const key = `${courseKey}|${(t.teeName||"").trim().toLowerCase()}|${(t.gender||"").trim().toLowerCase()}`;
+      const seedTee = seedLookup.get(key);
+      if(seedTee && seedTee.courseRating && seedTee.slopeRating){
+        t.courseRating = seedTee.courseRating;
+        t.slopeRating = seedTee.slopeRating;
+        if(!t.teeColour) t.teeColour = seedTee.teeColour || "";
+        healed++;
+      }
+    });
+  });
+  if(healed > 0) saveCourses();
+  return healed;
 }
 
 // Adds new courses and REPLACES any existing course of the same name (used when the seed data
@@ -2168,15 +2210,25 @@ document.getElementById("saveScorecardBtn").addEventListener("click", ()=>{
   const holeCount = Number(document.getElementById("holeCount").value);
   const teeName = document.getElementById("teeMarker").value;
   const gender = document.getElementById("playerGender").value;
+  const existing = findCourse(name);
+  const otherIdx = existing ? existing.teeSets.findIndex(t => (t.teeName||"").trim().toLowerCase() === (teeName || "Saved Scorecard").trim().toLowerCase() && (t.gender||"") === (gender||"")) : -1;
+  const priorTeeSet = otherIdx >= 0 ? existing.teeSets[otherIdx] : null;
+  // "Remember This Scorecard" is only meant to persist the Par/Stroke Index layout below — it
+  // must never silently wipe out a real Course Rating/Slope Rating/colour already on file for
+  // this exact tee+gender. It used to hard-code these to null/"" on every save, so overwriting
+  // an already-rated Course Library tee (e.g. re-saving after tweaking one hole's Stroke Index)
+  // quietly deleted its real rating data — breaking HC auto-calc for that tee from then on, with
+  // no visible cause other than its colour label going missing. Only a genuinely new tee/gender
+  // combo (no prior entry at all) should start out with null rating data.
   const teeSet = {
-    teeName: teeName || "Saved Scorecard", teeColour: "", gender: gender || "",
-    courseRating: null, slopeRating: null,
+    teeName: teeName || "Saved Scorecard",
+    teeColour: priorTeeSet ? (priorTeeSet.teeColour || "") : "",
+    gender: gender || "",
+    courseRating: priorTeeSet ? priorTeeSet.courseRating : null,
+    slopeRating: priorTeeSet ? priorTeeSet.slopeRating : null,
     holes: holes.slice(0, holeCount).map(h => ({ hole: h.hole, par: Number(h.par), stroke: Number(h.stroke), distance: null }))
   };
-  const existing = findCourse(name);
   if(existing){
-    const key = name.trim().toLowerCase();
-    const otherIdx = existing.teeSets.findIndex(t => (t.teeName||"").trim().toLowerCase() === (teeSet.teeName||"").trim().toLowerCase() && (t.gender||"") === (teeSet.gender||""));
     if(otherIdx >= 0) existing.teeSets[otherIdx] = teeSet; else existing.teeSets.push(teeSet);
   } else {
     courseLibrary.push({ name, union:"", city:"", teeSets:[teeSet] });

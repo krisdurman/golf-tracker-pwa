@@ -188,6 +188,109 @@ function wait(ms){ return new Promise(r=>setTimeout(r, ms)); }
   // Deleting from the library must never touch a round already saved to History.
   check("Other Course Library entries survive an unrelated delete", !!window.findCourse("Boss Consulting Links") && !!window.findCourse("Two Tee Golf Club"));
 
+  // ---- 8. Real bug: re-saving a scorecard for a tee that already has real Course Rating/Slope
+  // Rating on file must NOT wipe that rating data out. "Remember This Scorecard" is only meant to
+  // persist the Par/Stroke Index layout — it used to hard-code courseRating/slopeRating/teeColour
+  // to null/"" on every save, so simply tweaking one hole's Stroke Index and re-saving would
+  // silently delete a tee's real rating data, breaking its HC auto-calc from then on (this is what
+  // actually happened to a real player's White tee at a real club — its colour label going missing
+  // was the only visible clue).
+  const ratedCourse = {
+    name: "Rated Tee Golf Club", union: "", city: "",
+    teeSets: [
+      { teeName: "White", teeColour: "ffffff", gender: "Men", courseRating: 71.0, slopeRating: 125,
+        holes: Array.from({length:18}, (_,i) => ({ hole: i+1, par: 4, stroke: i+1, distance: 380 })) }
+    ]
+  };
+  window.importCourses([ratedCourse]);
+
+  genderSelect.value = "Men";
+  genderSelect.dispatchEvent(new window.Event("change", {bubbles:true}));
+  roundCourse.value = "Rated Tee Golf Club";
+  roundCourse.dispatchEvent(new window.Event("input", {bubbles:true}));
+  roundCourse.dispatchEvent(new window.Event("change", {bubbles:true}));
+  await wait(30);
+  check("Sanity: White tee auto-selected with its real rating loaded",
+    doc.getElementById("teeMarker").value === "White" &&
+    window.findCourse("Rated Tee Golf Club").teeSets[0].courseRating === 71.0);
+
+  // Tweak hole 1's Stroke Index (a normal, legitimate reason to re-save) and click "Remember This
+  // Scorecard" again for the SAME tee + gender.
+  liveRows = [...doc.querySelectorAll("#holeTable tbody tr")];
+  const rtHole1Stroke = liveRows[0].querySelector('select[data-field="stroke"]');
+  rtHole1Stroke.value = "9";
+  rtHole1Stroke.dispatchEvent(new window.Event("change", {bubbles:true}));
+  await wait(20);
+  doc.getElementById("saveScorecardBtn").dispatchEvent(new window.Event("click", {bubbles:true}));
+  await wait(30);
+
+  const afterResave = window.findCourse("Rated Tee Golf Club").teeSets.find(t => t.teeName === "White" && t.gender === "Men");
+  check("Re-saving the scorecard keeps the tee's real Course Rating intact", afterResave.courseRating === 71.0);
+  check("Re-saving the scorecard keeps the tee's real Slope Rating intact", afterResave.slopeRating === 125);
+  check("Re-saving the scorecard keeps the tee's colour label intact", afterResave.teeColour === "ffffff");
+  check("Re-saving the scorecard still captures the actual Stroke Index edit", Number(afterResave.holes[0].stroke) === 9);
+
+  // A genuinely NEW tee/gender combo at the same course (nothing to preserve) still starts out
+  // with no rating data, exactly as before — manual entry keeps working for real unrated courses.
+  genderSelect.value = "Women";
+  genderSelect.dispatchEvent(new window.Event("change", {bubbles:true}));
+  await wait(20);
+  doc.getElementById("saveScorecardBtn").dispatchEvent(new window.Event("click", {bubbles:true}));
+  await wait(30);
+  const newGenderTee = window.findCourse("Rated Tee Golf Club").teeSets.find(t => t.teeName === "White" && t.gender === "Women");
+  check("A brand-new tee/gender combo still starts with no rating data (nothing existed to preserve)",
+    !!newGenderTee && newGenderTee.courseRating === null && newGenderTee.slopeRating === null);
+
+  // ---- 9. repairMissingTeeRatings: self-heals any locally-saved tee-set that's missing its
+  // rating but has an exact Course + Tee Name + Gender match in the (simulated) national seed —
+  // without touching that tee-set's own Par/Stroke Index holes, since those may be genuinely
+  // customised. Also confirms it never touches a tee-set with no seed counterpart, or one that
+  // already has real rating data. ----
+  window.importCourses([
+    {
+      name: "Repair Test Golf Club", union: "", city: "",
+      teeSets: [
+        // Corrupted exactly like the real bug: rating/colour wiped, but the holes are a real,
+        // customised layout that must survive the repair untouched.
+        { teeName: "Blue", teeColour: "", gender: "Men", courseRating: null, slopeRating: null,
+          holes: Array.from({length:18}, (_,i) => ({ hole: i+1, par: 4, stroke: 18 - i, distance: null })) },
+        // No seed counterpart for this one at all — must be left alone.
+        { teeName: "Orange", teeColour: "", gender: "Men", courseRating: null, slopeRating: null,
+          holes: Array.from({length:18}, (_,i) => ({ hole: i+1, par: 4, stroke: i+1, distance: null })) },
+        // Already has real rating data — must be left alone even though a seed entry also exists.
+        { teeName: "Red", teeColour: "ff0000", gender: "Women", courseRating: 70.2, slopeRating: 121,
+          holes: Array.from({length:18}, (_,i) => ({ hole: i+1, par: 4, stroke: i+1, distance: null })) }
+      ]
+    }
+  ]);
+  const fakeSeed = [
+    {
+      name: "Repair Test Golf Club",
+      teeSets: [
+        { teeName: "Blue", teeColour: "0000ff", gender: "Men", courseRating: 69.5, slopeRating: 130, holes: [] },
+        { teeName: "Red", teeColour: "ff0000", gender: "Women", courseRating: 999, slopeRating: 999, holes: [] } // must NOT be applied — already rated
+      ]
+    }
+  ];
+  const healedCount = window.repairMissingTeeRatings(fakeSeed);
+  check("repairMissingTeeRatings reports exactly one heal", healedCount === 1);
+
+  const repaired = window.findCourse("Repair Test Golf Club");
+  const blueTee = repaired.teeSets.find(t => t.teeName === "Blue" && t.gender === "Men");
+  check("Corrupted Blue tee's Course Rating restored from the seed", blueTee.courseRating === 69.5);
+  check("Corrupted Blue tee's Slope Rating restored from the seed", blueTee.slopeRating === 130);
+  check("Corrupted Blue tee's colour restored from the seed", blueTee.teeColour === "0000ff");
+  check("Corrupted Blue tee's own Stroke Index layout is untouched by the repair",
+    blueTee.holes[0].stroke === 18 && blueTee.holes[17].stroke === 1);
+
+  const orangeTee = repaired.teeSets.find(t => t.teeName === "Orange");
+  check("Tee with no seed counterpart is left alone (still unrated, not crashed)",
+    orangeTee.courseRating === null && orangeTee.slopeRating === null);
+
+  const redTee = repaired.teeSets.find(t => t.teeName === "Red");
+  check("Tee that already had real rating data is NOT overwritten by the seed's numbers",
+    redTee.courseRating === 70.2 && redTee.slopeRating === 121);
+
   let allPass = true;
   for(const r of results){
     console.log((r.pass ? "PASS" : "FAIL") + " - " + r.name);
